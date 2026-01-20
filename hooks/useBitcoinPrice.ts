@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchBitcoinPrice } from '../lib/bitcoin-api';
+import { fetchBitcoinPriceData, BitcoinPriceData } from '../lib/bitcoin-api';
 
 /**
  * Custom hook to fetch and manage Bitcoin price with rate limiting
@@ -7,6 +7,7 @@ import { fetchBitcoinPrice } from '../lib/bitcoin-api';
  */
 export const useBitcoinPrice = () => {
   const [price, setPrice] = useState<number | null>(null);
+  const [priceChange24h, setPriceChange24h] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
@@ -25,8 +26,9 @@ export const useBitcoinPrice = () => {
     setLoading(true);
     setError(null);
     try {
-      const btcPrice = await fetchBitcoinPrice();
-      setPrice(btcPrice);
+      const data = await fetchBitcoinPriceData();
+      setPrice(data.usd);
+      setPriceChange24h(data.usd_24h_change || null);
       setFetchedAt(new Date());
       lastFetchedTime.current = now;
     } catch (err) {
@@ -40,5 +42,5 @@ export const useBitcoinPrice = () => {
     refresh();
   }, []);
 
-  return { price, loading, error, fetchedAt, refresh };
+  return { price, priceChange24h, loading, error, fetchedAt, refresh };
 };

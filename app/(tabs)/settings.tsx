@@ -23,47 +23,10 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { settings, loading, updateSettings } = useSettings();
   
-  const [interestEnabled, setInterestEnabled] = useState(settings?.interest_enabled ?? false);
-  const [annualRate, setAnnualRate] = useState(
-    settings?.annual_interest_rate?.toString() ?? '7'
-  );
   const [manualBalance, setManualBalance] = useState(
     settings?.manual_btc_balance?.toString() ?? ''
   );
   const [saving, setSaving] = useState(false);
-
-  const handleToggleInterest = async (value: boolean) => {
-    setInterestEnabled(value);
-    try {
-      await updateSettings({ interest_enabled: value });
-    } catch (error: any) {
-      Alert.alert('Error', 'Failed to update interest setting');
-      setInterestEnabled(!value);
-    }
-  };
-
-  const handleUpdateInterestRate = async () => {
-    if (!annualRate) {
-      Alert.alert('Error', 'Please enter an interest rate');
-      return;
-    }
-
-    const rate = parseFloat(annualRate);
-    if (isNaN(rate) || rate < 0) {
-      Alert.alert('Error', 'Please enter a valid interest rate');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await updateSettings({ annual_interest_rate: rate });
-      Alert.alert('Success', 'Interest rate updated');
-    } catch (error: any) {
-      Alert.alert('Error', 'Failed to update interest rate');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleUpdateManualBalance = async () => {
     if (!manualBalance) {
@@ -119,50 +82,6 @@ export default function SettingsScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>Settings</Text>
 
-        {/* Interest Tracking Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Interest Tracking</Text>
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Enable Interest</Text>
-              <Text style={styles.settingDescription}>
-                Track interest earned on your Bitcoin holdings
-              </Text>
-            </View>
-            <Switch
-              value={interestEnabled}
-              onValueChange={handleToggleInterest}
-              trackColor={{ false: '#333', true: '#F7931A80' }}
-              thumbColor={interestEnabled ? '#F7931A' : '#999'}
-            />
-          </View>
-
-          {interestEnabled && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Annual Interest Rate (%)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="7"
-                placeholderTextColor="#666"
-                value={annualRate}
-                onChangeText={setAnnualRate}
-                keyboardType="decimal-pad"
-                editable={!saving}
-              />
-              <TouchableOpacity
-                style={[styles.button, saving && styles.buttonDisabled]}
-                onPress={handleUpdateInterestRate}
-                disabled={saving}
-              >
-                <Text style={styles.buttonText}>Update Rate</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
         {/* Manual Balance Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -170,8 +89,9 @@ export default function SettingsScreen() {
           </View>
 
           <Text style={styles.sectionDescription}>
-            Enter your actual Bitcoin balance from your wallet. This helps track interest 
-            and prevents calculation errors.
+            Enter your actual Bitcoin balance from your wallet. If provided, this balance 
+            will be used to calculate your total portfolio value instead of just 
+            summing your purchases.
           </Text>
 
           {settings?.manual_balance_updated_at && (

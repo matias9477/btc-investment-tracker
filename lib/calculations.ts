@@ -18,35 +18,22 @@ export const calculateDashboardMetrics = (
   const manualTotalBitcoin = settings?.manual_btc_balance ?? null;
   const manualBalanceUpdatedAt = settings?.manual_balance_updated_at ?? null;
 
-  // Calculate interest (if manual balance exists)
-  let interestInBtc = 0;
-  if (manualTotalBitcoin !== null) {
-    interestInBtc = manualTotalBitcoin - totalBoughtBitcoin;
-  }
+  // 1. Purchased Metrics (Based only on transactions)
+  const finalValuePurchased = totalBoughtBitcoin * currentBtcPrice;
+  const profitPurchased = finalValuePurchased - totalInvestment;
+  const roiPurchased = totalInvestment > 0 ? (profitPurchased / totalInvestment) * 100 : 0;
+
+  // 2. Real Metrics (Based on manual balance if available, otherwise same as purchased)
+  const finalValueReal = manualTotalBitcoin !== null ? manualTotalBitcoin * currentBtcPrice : finalValuePurchased;
+  const profitReal = finalValueReal - totalInvestment;
+  const roiReal = totalInvestment > 0 ? (profitReal / totalInvestment) * 100 : 0;
+
+  // 3. Interest Metrics (Difference between real and purchased)
+  const interestInBtc = manualTotalBitcoin !== null ? manualTotalBitcoin - totalBoughtBitcoin : 0;
   const interestInUsd = interestInBtc * currentBtcPrice;
 
-  // Calculate final values
-  const finalValueWithoutInterest = totalBoughtBitcoin * currentBtcPrice;
-  const finalValueWithInterest = manualTotalBitcoin !== null 
-    ? manualTotalBitcoin * currentBtcPrice 
-    : finalValueWithoutInterest;
-
-  // Calculate profit/loss
-  const profitWithoutInterest = finalValueWithoutInterest - totalInvestment;
-  const profitWithInterest = finalValueWithInterest - totalInvestment;
-
-  // Calculate ROI (Return on Investment) as percentage
-  const roiWithoutInterest = totalInvestment > 0 
-    ? (profitWithoutInterest / totalInvestment) * 100 
-    : 0;
-  const roiWithInterest = totalInvestment > 0 
-    ? (profitWithInterest / totalInvestment) * 100 
-    : 0;
-
-  // Calculate equilibrium price
-  const equilibriumPrice = totalBoughtBitcoin > 0 
-    ? totalInvestment / totalBoughtBitcoin 
-    : 0;
+  // Calculate equilibrium price (break-even)
+  const equilibriumPrice = totalBoughtBitcoin > 0 ? totalInvestment / totalBoughtBitcoin : 0;
 
   return {
     currentBtcPrice,
@@ -54,43 +41,59 @@ export const calculateDashboardMetrics = (
     totalBoughtBitcoin,
     manualTotalBitcoin,
     manualBalanceUpdatedAt,
+    finalValuePurchased,
+    finalValueReal,
+    profitPurchased,
+    profitReal,
+    roiPurchased,
+    roiReal,
     interestInBtc,
     interestInUsd,
-    finalValueWithoutInterest,
-    finalValueWithInterest,
-    profitWithoutInterest,
-    profitWithInterest,
-    roiWithoutInterest,
-    roiWithInterest,
     equilibriumPrice,
   };
 };
 
 /**
- * Formats a number as USD currency
+ * Formats a number as USD currency safely
  */
-export const formatUSD = (amount: number): string => {
+export const formatUSD = (amount: number | undefined | null): string => {
+  const value = amount ?? 0;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(value);
 };
 
 /**
- * Formats a number as Bitcoin with high precision
+ * Formats a number as Bitcoin with high precision safely
  */
-export const formatBTC = (amount: number): string => {
-  return amount.toFixed(8) + ' BTC';
+export const formatBTC = (amount: number | undefined | null): string => {
+  const value = amount ?? 0;
+  return value.toFixed(8) + ' BTC';
 };
 
 /**
- * Formats a percentage value
+ * Formats a percentage value safely
  */
-export const formatPercentage = (value: number): string => {
+export const formatPercentage = (value: number | undefined | null): string => {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '+0.00%';
+  }
   const sign = value >= 0 ? '+' : '';
   return `${sign}${value.toFixed(2)}%`;
+};
+
+/**
+ * Formats a date string to DD/MM/YY format
+ */
+export const formatDateShort = (dateString: string): string => {
+  const date = new Date(dateString);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
 };
 
 /**

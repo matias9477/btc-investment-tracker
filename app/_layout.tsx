@@ -3,6 +3,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { ToastProvider } from '../components/ToastProvider';
 
 /**
  * Root layout component that handles auth state and navigation
@@ -48,7 +49,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Slot />
+      <ToastProvider>
+        <Slot />
+      </ToastProvider>
     </SafeAreaProvider>
   );
 }

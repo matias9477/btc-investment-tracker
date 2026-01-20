@@ -29,14 +29,16 @@ export interface DashboardMetrics {
   totalBoughtBitcoin: number;
   manualTotalBitcoin: number | null;
   manualBalanceUpdatedAt: string | null;
+  // Comparative metrics
+  finalValuePurchased: number;
+  finalValueReal: number;
+  profitPurchased: number;
+  profitReal: number;
+  roiPurchased: number;
+  roiReal: number;
+  // Interest metrics
   interestInBtc: number;
   interestInUsd: number;
-  finalValueWithoutInterest: number;
-  finalValueWithInterest: number;
-  profitWithoutInterest: number;
-  profitWithInterest: number;
-  roiWithoutInterest: number;
-  roiWithInterest: number;
   equilibriumPrice: number;
 }
 

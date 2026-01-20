@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,18 @@ import {
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { usePurchases } from '../../hooks/usePurchases';
 import { useSettings } from '../../hooks/useSettings';
 import { useBitcoinPrice } from '../../hooks/useBitcoinPrice';
 import { DashboardCard } from '../../components/DashboardCard';
-import { calculateDashboardMetrics, formatUSD, formatBTC, formatPercentage, formatDate } from '../../lib/calculations';
+import { PortfolioHero } from '../../components/PortfolioHero';
+import { PriceCard } from '../../components/PriceCard';
+import { calculateDashboardMetrics, formatUSD, formatBTC, formatPercentage, formatDate, formatDateShort } from '../../lib/calculations';
 
 /**
  * Dashboard screen showing all investment metrics
@@ -23,7 +27,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { purchases, loading: purchasesLoading, refresh: refreshPurchases } = usePurchases();
   const { settings, loading: settingsLoading, refresh: refreshSettings } = useSettings();
-  const { price, loading: priceLoading, fetchedAt, refresh: refreshPrice } = useBitcoinPrice();
+  const { price, priceChange24h, loading: priceLoading, fetchedAt, refresh: refreshPrice } = useBitcoinPrice();
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -40,9 +44,15 @@ export default function DashboardScreen() {
     router.push('/add-purchase');
   };
 
+  const recentPurchases = useMemo(() => {
+    return [...purchases]
+      .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())
+      .slice(0, 3);
+  }, [purchases]);
+
   if (purchasesLoading || settingsLoading || priceLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.loadingContainer} edges={['top']}>
         <ActivityIndicator size="large" color="#F7931A" />
       </SafeAreaView>
     );
@@ -50,7 +60,8 @@ export default function DashboardScreen() {
 
   if (!price) {
     return (
-      <SafeAreaView style={styles.errorContainer} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.errorContainer} edges={['top']}>
+        <Ionicons name="cloud-offline-outline" size={64} color="#EF4444" style={{ marginBottom: 16 }} />
         <Text style={styles.errorText}>Failed to load Bitcoin price</Text>
         <TouchableOpacity style={styles.retryButton} onPress={refreshPrice}>
           <Text style={styles.retryButtonText}>Retry</Text>
@@ -60,13 +71,14 @@ export default function DashboardScreen() {
   }
 
   const metrics = calculateDashboardMetrics(purchases, settings, price);
-  const showInterest = settings?.interest_enabled && metrics.manualTotalBitcoin !== null;
+  const hasManualBalance = metrics.manualTotalBitcoin !== null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="light-content" />
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -78,16 +90,21 @@ export default function DashboardScreen() {
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Your Portfolio</Text>
-            <TouchableOpacity style={styles.addButton} onPress={handleAddPurchase}>
-              <Text style={styles.addButtonText}>+ Add Purchase</Text>
+            <View>
+              <Text style={styles.headerGreeting}>Welcome back</Text>
+              <Text style={styles.headerTitle}>Dashboard</Text>
+            </View>
+            <TouchableOpacity style={styles.addIconButton} onPress={handleAddPurchase}>
+              <Ionicons name="add" size={28} color="#000" />
             </TouchableOpacity>
           </View>
 
           {/* Empty State */}
           {purchases.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyStateEmoji}>📊</Text>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="stats-chart" size={80} color="#333" />
+              </View>
               <Text style={styles.emptyStateTitle}>No Purchases Yet</Text>
               <Text style={styles.emptyStateText}>
                 Start tracking your Bitcoin investments by adding your first purchase
@@ -98,99 +115,170 @@ export default function DashboardScreen() {
             </View>
           ) : (
             <>
-              {/* Current Price */}
-              <DashboardCard
-                title="Current BTC Price"
-                value={formatUSD(metrics.currentBtcPrice)}
-                subtitle={
-                  fetchedAt
-                    ? `Fetched ${formatDate(fetchedAt.toISOString())}`
-                    : undefined
-                }
+              {/* Portfolio Hero - Shows the REAL status (with interest if manual balance exists) */}
+              <PortfolioHero 
+                totalValue={metrics.finalValueReal}
+                profit={metrics.profitReal}
+                roi={metrics.roiReal}
+                btcAmount={hasManualBalance ? metrics.manualTotalBitcoin! : metrics.totalBoughtBitcoin}
+                title={hasManualBalance ? 'Real Wallet Balance' : 'Total Portfolio Balance'}
               />
 
-              {/* Investment Summary */}
-              <Text style={styles.sectionTitle}>Investment Summary</Text>
-              <DashboardCard
-                title="Total Investment"
-                value={formatUSD(metrics.totalInvestment)}
-                subtitle="Total USD spent"
-              />
-              <DashboardCard
-                title="Total Bought Bitcoin"
-                value={formatBTC(metrics.totalBoughtBitcoin)}
+              {/* BTC Price */}
+              <PriceCard 
+                price={metrics.currentBtcPrice} 
+                priceChange24h={priceChange24h}
+                fetchedAt={fetchedAt || undefined} 
               />
 
-              {/* Manual Balance */}
-              {metrics.manualTotalBitcoin !== null && (
+              {/* Basic Portfolio Stats */}
+              <Text style={styles.sectionTitle}>Portfolio Summary</Text>
+              <View style={styles.grid}>
                 <DashboardCard
-                  title="Real Total Bitcoin"
-                  value={formatBTC(metrics.manualTotalBitcoin)}
-                  subtitle={
-                    metrics.manualBalanceUpdatedAt
-                      ? `Updated ${formatDate(metrics.manualBalanceUpdatedAt)}`
-                      : undefined
-                  }
+                  title="Total Invested"
+                  value={formatUSD(metrics.totalInvestment)}
+                  compact
+                  explanation="Total USD spent across all your Bitcoin purchases."
                 />
-              )}
+                <DashboardCard
+                  title="Total BTC Bought"
+                  value={formatBTC(metrics.totalBoughtBitcoin)}
+                  compact
+                  explanation="Total amount of Bitcoin you have purchased across all recorded transactions."
+                />
+              </View>
 
-              {/* Interest (if enabled and manual balance exists) */}
-              {showInterest && (
+              {/* Interest / Gain Metrics - Only if manual balance exists */}
+              {hasManualBalance && (
                 <>
-                  <Text style={styles.sectionTitle}>Interest Earned</Text>
-                  <DashboardCard
-                    title="Interest in BTC"
-                    value={formatBTC(metrics.interestInBtc)}
-                    positive={metrics.interestInBtc > 0}
-                  />
-                  <DashboardCard
-                    title="Interest in USD"
-                    value={formatUSD(metrics.interestInUsd)}
-                    positive={metrics.interestInUsd > 0}
-                  />
+                  <Text style={styles.sectionTitle}>Interest & Yield</Text>
+                  <View style={styles.grid}>
+                    <DashboardCard
+                      title="Yield Amount"
+                      value={formatBTC(metrics.interestInBtc)}
+                      positive={metrics.interestInBtc > 0}
+                      negative={metrics.interestInBtc < 0}
+                      compact
+                      explanation="The difference in BTC between your wallet balance and your total purchases."
+                    />
+                    <DashboardCard
+                      title="Yield Value"
+                      value={formatUSD(metrics.interestInUsd)}
+                      positive={metrics.interestInUsd > 0}
+                      negative={metrics.interestInUsd < 0}
+                      compact
+                      explanation="The current market value of your earned interest/yield."
+                    />
+                    <DashboardCard
+                      title="Base ROI"
+                      value={formatPercentage(metrics.roiPurchased)}
+                      positive={metrics.roiPurchased > 0}
+                      negative={metrics.roiPurchased < 0}
+                      compact
+                      explanation="ROI based only on your purchases."
+                    />
+                    <DashboardCard
+                      title="Net ROI"
+                      value={formatPercentage(metrics.roiReal)}
+                      positive={metrics.roiReal > 0}
+                      negative={metrics.roiReal < 0}
+                      compact
+                      explanation="Total ROI including your yield/interest."
+                    />
+                  </View>
                 </>
               )}
 
-              {/* Current Value & Profit */}
-              <Text style={styles.sectionTitle}>Performance</Text>
-              <DashboardCard
-                title={showInterest ? 'Final Value (without interest)' : 'Final Value'}
-                value={formatUSD(metrics.finalValueWithoutInterest)}
-              />
-              {showInterest && (
+              {/* Performance Comparison */}
+              <Text style={styles.sectionTitle}>Performance Analysis</Text>
+              <View style={styles.grid}>
                 <DashboardCard
-                  title="Final Value (with interest)"
-                  value={formatUSD(metrics.finalValueWithInterest)}
+                  title="Break-even"
+                  value={formatUSD(metrics.equilibriumPrice)}
+                  compact
+                  explanation="The Bitcoin price needed for your portfolio to have zero profit/loss. Total Investment / Total BTC Purchased."
                 />
-              )}
-              <DashboardCard
-                title={showInterest ? 'Profit (without interest)' : 'Profit/Loss'}
-                value={formatUSD(metrics.profitWithoutInterest)}
-                positive={metrics.profitWithoutInterest > 0}
-                negative={metrics.profitWithoutInterest < 0}
-                subtitle={`ROI: ${formatPercentage(metrics.roiWithoutInterest)}`}
-              />
-              {showInterest && (
+                <View style={{ width: '45%', marginHorizontal: 4 }} /> 
+                
+                {/* Profit Row */}
                 <DashboardCard
-                  title="Profit (with interest)"
-                  value={formatUSD(metrics.profitWithInterest)}
-                  positive={metrics.profitWithInterest > 0}
-                  negative={metrics.profitWithInterest < 0}
-                  subtitle={`ROI: ${formatPercentage(metrics.roiWithInterest)}`}
+                  title="P/L (Purchased)"
+                  value={formatUSD(metrics.profitPurchased)}
+                  positive={metrics.profitPurchased > 0}
+                  negative={metrics.profitPurchased < 0}
+                  compact
+                  explanation="Profit/loss based ONLY on your recorded transactions."
                 />
+                {hasManualBalance ? (
+                  <DashboardCard
+                    title="P/L (Real)"
+                    value={formatUSD(metrics.profitReal)}
+                    positive={metrics.profitReal > 0}
+                    negative={metrics.profitReal < 0}
+                    compact
+                    explanation="Total net profit/loss, including any interest or external gains in your wallet."
+                  />
+                ) : (
+                  <View style={{ width: '45%', marginHorizontal: 4 }} />
+                )}
+
+                {/* Value Row */}
+                <DashboardCard
+                  title="Value (Purchased)"
+                  value={formatUSD(metrics.finalValuePurchased)}
+                  compact
+                  explanation="The current value of the total BTC you have purchased."
+                />
+                {hasManualBalance ? (
+                  <DashboardCard
+                    title="Value (Real)"
+                    value={formatUSD(metrics.finalValueReal)}
+                    compact
+                    explanation="The current value of your actual wallet balance."
+                  />
+                ) : (
+                  <View style={{ width: '45%', marginHorizontal: 4 }} />
+                )}
+              </View>
+
+              {/* Recent Activity */}
+              {recentPurchases.length > 0 && (
+                <View style={styles.recentSection}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Recent Activity</Text>
+                    <TouchableOpacity onPress={() => router.push('/purchases')}>
+                      <Text style={styles.seeAllText}>See All</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.recentTable}>
+                    <View style={styles.recentTableHeader}>
+                      <Text style={[styles.recentHeaderCell, { width: 65 }]}>Date</Text>
+                      <Text style={[styles.recentHeaderCell, { flex: 1.2, paddingLeft: 4 }]}>Price</Text>
+                      <Text style={[styles.recentHeaderCell, { flex: 1, textAlign: 'right' }]}>Spent</Text>
+                    </View>
+                    {recentPurchases.map((purchase) => (
+                      <TouchableOpacity 
+                        key={purchase.id} 
+                        style={styles.recentRow}
+                        onPress={() => router.push({
+                          pathname: '/edit-purchase',
+                          params: { id: purchase.id }
+                        })}
+                      >
+                        <Text style={[styles.recentCell, { width: 65 }]}>{formatDateShort(purchase.purchase_date)}</Text>
+                        <Text style={[styles.recentCell, { flex: 1.2, paddingLeft: 4 }]}>{formatUSD(purchase.btc_price_at_purchase)}</Text>
+                        <Text style={[styles.recentCell, { flex: 1, textAlign: 'right' }]}>{formatUSD(purchase.usd_spent)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               )}
 
-              {/* Equilibrium Price */}
-              <DashboardCard
-                title="Equilibrium Price"
-                value={formatUSD(metrics.equilibriumPrice)}
-                subtitle="Break-even BTC price"
-              />
+              <View style={{ height: 40 }} />
             </>
           )}
         </View>
       </ScrollView>
-      </View>
     </SafeAreaView>
   );
 }
@@ -211,19 +299,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 32,
   },
   errorText: {
     color: '#EF4444',
-    fontSize: 16,
-    marginBottom: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 24,
     textAlign: 'center',
   },
   retryButton: {
     backgroundColor: '#F7931A',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   retryButtonText: {
     color: '#000',
@@ -233,65 +322,137 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 20,
+  },
   content: {
-    padding: 16,
+    padding: 20,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
+    marginTop: 10,
+  },
+  headerGreeting: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#FFF',
   },
-  addButton: {
+  addIconButton: {
     backgroundColor: '#F7931A',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: 'bold',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#F7931A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFF',
-    marginTop: 8,
+    marginTop: 12,
     marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  seeAllText: {
+    color: '#F7931A',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  recentSection: {
+    marginTop: 12,
+  },
+  recentTable: {
+    backgroundColor: '#111',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#222',
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  recentTableHeader: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#1A1A1A',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  recentHeaderCell: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  recentRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  recentCell: {
+    fontSize: 13,
+    color: '#FFF',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
+    paddingVertical: 60,
   },
-  emptyStateEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+  emptyIconContainer: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#111',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyStateTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFF',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#999',
+    color: '#666',
     textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 32,
+    marginBottom: 32,
+    paddingHorizontal: 20,
+    lineHeight: 24,
   },
   emptyStateButton: {
     backgroundColor: '#F7931A',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 16,
+    elevation: 4,
   },
   emptyStateButtonText: {
     color: '#000',

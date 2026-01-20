@@ -4,14 +4,19 @@
 
 const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3';
 
+export interface BitcoinPriceData {
+  usd: number;
+  usd_24h_change?: number;
+}
+
 /**
  * Fetches the current Bitcoin price in USD from CoinGecko
- * @returns Current Bitcoin price in USD
+ * @returns Current Bitcoin price in USD and 24h change
  */
-export const fetchBitcoinPrice = async (): Promise<number> => {
+export const fetchBitcoinPriceData = async (): Promise<BitcoinPriceData> => {
   try {
     const response = await fetch(
-      `${COINGECKO_API_URL}/simple/price?ids=bitcoin&vs_currencies=usd`
+      `${COINGECKO_API_URL}/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true`
     );
     
     if (!response.ok) {
@@ -19,11 +24,22 @@ export const fetchBitcoinPrice = async (): Promise<number> => {
     }
     
     const data = await response.json();
-    return data.bitcoin.usd;
+    return {
+      usd: data.bitcoin.usd,
+      usd_24h_change: data.bitcoin.usd_24h_change
+    };
   } catch (error) {
     console.error('Error fetching Bitcoin price:', error);
     throw new Error('Failed to fetch Bitcoin price. Please try again.');
   }
+};
+
+/**
+ * @deprecated Use fetchBitcoinPriceData instead
+ */
+export const fetchBitcoinPrice = async (): Promise<number> => {
+  const data = await fetchBitcoinPriceData();
+  return data.usd;
 };
 
 /**
