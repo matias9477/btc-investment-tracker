@@ -29,6 +29,11 @@ export default function SettingsScreen() {
   const [manualBalance, setManualBalance] = useState(
     settings?.manual_btc_balance?.toString() ?? '',
   );
+  /** 'manual' → numeric text input; 'cell' → spreadsheet cell reference input */
+  const [balanceMode, setBalanceMode] = useState<'manual' | 'cell'>(
+    settings?.manual_btc_balance_cell ? 'cell' : 'manual',
+  );
+  const [cellRef, setCellRef] = useState(settings?.manual_btc_balance_cell ?? '');
   const [savingBalance, setSavingBalance] = useState(false);
 
   // Google Sheets state
@@ -43,6 +48,9 @@ export default function SettingsScreen() {
   useEffect(() => {
     if (!settings) return;
     setManualBalance(settings.manual_btc_balance?.toString() ?? '');
+    const hasCellRef = !!settings.manual_btc_balance_cell;
+    setBalanceMode(hasCellRef ? 'cell' : 'manual');
+    setCellRef(settings.manual_btc_balance_cell ?? '');
     setSheetsUrl(settings.sheets_url ?? '');
     setColDate(settings.sheets_col_date ?? 'A');
     setColPrice(settings.sheets_col_price ?? 'B');
@@ -50,7 +58,44 @@ export default function SettingsScreen() {
     setColSpent(settings.sheets_col_spent ?? 'D');
   }, [settings]);
 
-  const handleUpdateManualBalance = async () => {
+  /**
+   * Saves the BTC balance configuration. Behaviour differs by mode:
+   * - 'manual': validates and saves the numeric value, clears any cell reference.
+   * - 'cell': validates the cell reference format, saves it, clears the numeric value.
+   *
+   * Setting both fields as mutually exclusive keeps the priority logic
+   * in the dashboard simple — cell reference always wins when present.
+   */
+  const handleSaveBalance = async () => {
+    if (balanceMode === 'cell') {
+      const trimmed = cellRef.trim().toUpperCase();
+      if (!trimmed || !/^[A-Z]{1,2}\d+$/.test(trimmed)) {
+        Alert.alert(
+          'Invalid Cell Reference',
+          'Enter a valid cell reference like "I7" or "AB12".',
+        );
+        return;
+      }
+
+      setSavingBalance(true);
+      try {
+        await updateSettings({
+          manual_btc_balance_cell: trimmed,
+          manual_btc_balance: null,
+          manual_balance_updated_at: new Date().toISOString(),
+        });
+        Alert.alert(
+          'Saved',
+          `Cell reference "${trimmed}" saved. Your balance will be read from that cell on each sync.`,
+        );
+      } catch {
+        Alert.alert('Error', 'Failed to save cell reference');
+      } finally {
+        setSavingBalance(false);
+      }
+      return;
+    }
+
     if (!manualBalance) {
       Alert.alert('Error', 'Please enter your current Bitcoin balance');
       return;
@@ -66,6 +111,7 @@ export default function SettingsScreen() {
     try {
       await updateSettings({
         manual_btc_balance: balance,
+        manual_btc_balance_cell: null,
         manual_balance_updated_at: new Date().toISOString(),
       });
       Alert.alert('Success', 'Manual balance updated');
@@ -246,17 +292,50 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Manual Balance Section */}
+          {/* Balance Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Manual Wallet Balance</Text>
+              <Text style={styles.sectionTitle}>Bitcoin Balance</Text>
             </View>
 
             <Text style={styles.sectionDescription}>
-              Enter your actual Bitcoin balance from your wallet. If provided, this
-              balance will be used to calculate your total portfolio value instead
-              of just summing your purchases.
+              Configure how the app determines your total BTC balance. Enter a
+              value manually or let it read directly from a cell in your spreadsheet.
             </Text>
+
+            {/* Mode toggle */}
+            <View style={styles.modeToggle}>
+              <TouchableOpacity
+                style={[styles.modeOption, balanceMode === 'manual' && styles.modeOptionActive]}
+                onPress={() => setBalanceMode('manual')}
+                accessibilityLabel="Enter balance manually"
+                accessibilityRole="button"
+              >
+                <Text
+                  style={[
+                    styles.modeOptionText,
+                    balanceMode === 'manual' && styles.modeOptionTextActive,
+                  ]}
+                >
+                  Enter manually
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeOption, balanceMode === 'cell' && styles.modeOptionActive]}
+                onPress={() => setBalanceMode('cell')}
+                accessibilityLabel="Read balance from spreadsheet cell"
+                accessibilityRole="button"
+              >
+                <Text
+                  style={[
+                    styles.modeOptionText,
+                    balanceMode === 'cell' && styles.modeOptionTextActive,
+                  ]}
+                >
+                  From sheet cell
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {settings?.manual_balance_updated_at && (
               <Text style={styles.lastUpdated}>
@@ -264,31 +343,57 @@ export default function SettingsScreen() {
               </Text>
             )}
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Current BTC Balance</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0.00000000"
-                placeholderTextColor="#666"
-                value={manualBalance}
-                onChangeText={setManualBalance}
-                keyboardType="decimal-pad"
-                editable={!savingBalance}
-              />
-              <TouchableOpacity
-                style={[styles.button, savingBalance && styles.buttonDisabled]}
-                onPress={handleUpdateManualBalance}
-                disabled={savingBalance}
-                accessibilityLabel="Update manual balance"
-                accessibilityRole="button"
-              >
-                {savingBalance ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : (
-                  <Text style={styles.buttonText}>Update Balance</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            {balanceMode === 'manual' ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Current BTC Balance</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0.00000000"
+                  placeholderTextColor="#666"
+                  value={manualBalance}
+                  onChangeText={setManualBalance}
+                  keyboardType="decimal-pad"
+                  editable={!savingBalance}
+                  accessibilityLabel="Current BTC balance"
+                />
+              </View>
+            ) : (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Cell Reference</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. I7"
+                  placeholderTextColor="#666"
+                  value={cellRef}
+                  onChangeText={(v) => setCellRef(v.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={6}
+                  editable={!savingBalance}
+                  accessibilityLabel="Cell reference for BTC balance"
+                />
+                <Text style={styles.cellRefHint}>
+                  The cell that contains your total BTC balance (e.g. "I7"). Its
+                  value is read automatically on every sheet sync.
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.button, savingBalance && styles.buttonDisabled]}
+              onPress={handleSaveBalance}
+              disabled={savingBalance}
+              accessibilityLabel="Save balance configuration"
+              accessibilityRole="button"
+            >
+              {savingBalance ? (
+                <ActivityIndicator size="small" color="#000" />
+              ) : (
+                <Text style={styles.buttonText}>
+                  {balanceMode === 'manual' ? 'Update Balance' : 'Save Cell Reference'}
+                </Text>
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* App Info Section */}
@@ -424,6 +529,39 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 12,
     fontStyle: 'italic',
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#000',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  modeOption: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  modeOptionActive: {
+    backgroundColor: '#F7931A',
+  },
+  modeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modeOptionTextActive: {
+    color: '#000',
+  },
+  cellRefHint: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 18,
+    marginTop: -4,
+    marginBottom: 4,
   },
   appInfo: {
     fontSize: 14,
