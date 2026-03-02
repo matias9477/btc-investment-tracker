@@ -14,8 +14,8 @@ export const calculateDashboardMetrics = (
   // Calculate total bought Bitcoin (sum of all BTC amounts)
   const totalBoughtBitcoin = purchases.reduce((sum, p) => sum + p.btc_amount, 0);
 
-  // Get manual balance from settings
-  const manualTotalBitcoin = settings?.manual_btc_balance ?? null;
+  // Get manual balance from settings — treat 0 the same as null (not configured)
+  const manualTotalBitcoin = settings?.manual_btc_balance || null;
   const manualBalanceUpdatedAt = settings?.manual_balance_updated_at ?? null;
 
   // 1. Purchased Metrics (Based only on transactions)
