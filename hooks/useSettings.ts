@@ -37,6 +37,11 @@ export const useSettings = () => {
               annual_interest_rate: null,
               manual_btc_balance: null,
               manual_balance_updated_at: null,
+              sheets_url: null,
+              sheets_col_date: 'A',
+              sheets_col_price: 'B',
+              sheets_col_amount: 'C',
+              sheets_col_spent: 'D',
             }])
             .select()
             .single();
