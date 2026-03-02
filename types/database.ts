@@ -19,6 +19,16 @@ export interface UserSettings {
   annual_interest_rate: number | null;
   manual_btc_balance: number | null;
   manual_balance_updated_at: string | null;
+  /** Full Google Sheets share URL, or null when not configured */
+  sheets_url: string | null;
+  /** Column letter for the purchase date field (e.g. 'A') */
+  sheets_col_date: string;
+  /** Column letter for the BTC price at purchase field (e.g. 'B') */
+  sheets_col_price: string;
+  /** Column letter for the BTC amount field (e.g. 'C') */
+  sheets_col_amount: string;
+  /** Column letter for the USD spent field (e.g. 'D') */
+  sheets_col_spent: string;
   created_at: string;
   updated_at: string;
 }
