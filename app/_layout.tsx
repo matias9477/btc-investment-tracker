@@ -15,11 +15,24 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    // Race getSession against a 6-second timeout so a hung network request
+    // (e.g. stale token refresh failing) never leaves the app on a blank screen.
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 6000),
+    );
+
+    Promise.race([
+      supabase.auth.getSession().then(({ data: { session } }) => session),
+      timeout,
+    ])
+      .then((session) => {
+        setSession(session);
+        setLoading(false);
+      })
+      .catch(() => {
+        setSession(null);
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
