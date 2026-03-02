@@ -86,24 +86,34 @@ export const parseDateValue = (val: string): string => {
 };
 
 /**
- * Fetches purchase data from a publicly shared Google Sheets document
- * and maps each valid data row to a `Purchase` object.
+ * Parses a cell reference string (e.g. "I7") into zero-based row/column indices.
+ * Supports single and double letter column identifiers (e.g. "AA7").
  *
- * Rows are silently discarded when any of the three numeric columns
- * (price, amount, spent) do not resolve to a valid finite number —
- * this naturally filters out header rows, empty rows, and label rows.
+ * @param ref - Cell reference such as 'I7' or 'AB12'.
+ * @returns An object with zero-based `colIndex` and `rowIndex`, or null if invalid.
+ */
+export const parseCellReference = (
+  ref: string,
+): { colIndex: number; rowIndex: number } | null => {
+  const match = ref.trim().toUpperCase().match(/^([A-Z]{1,2})(\d+)$/);
+  if (!match) return null;
+  return {
+    colIndex: columnLetterToIndex(match[1]),
+    rowIndex: parseInt(match[2], 10) - 1,
+  };
+};
+
+/**
+ * Fetches a publicly shared Google Sheets document and returns the raw CSV
+ * data as a 2-D array of strings (rows × columns).
  *
- * @param config - Column mapping and sheet URL configuration.
- * @param userId - The authenticated user's ID, used to satisfy the Purchase type.
- * @returns An array of Purchase objects sorted by date descending.
+ * @param sheetsUrl - Full Google Sheets share URL.
+ * @returns Parsed CSV rows as `string[][]`.
  * @throws Error if the URL is invalid, the sheet is not publicly accessible,
  *         or the network request fails.
  */
-export const fetchSheetPurchases = async (
-  config: SheetColumnConfig,
-  userId: string,
-): Promise<Purchase[]> => {
-  const spreadsheetId = extractSpreadsheetId(config.sheetsUrl);
+export const fetchSheetRows = async (sheetsUrl: string): Promise<string[][]> => {
+  const spreadsheetId = extractSpreadsheetId(sheetsUrl);
   if (!spreadsheetId) {
     throw new Error(
       'Invalid Google Sheets URL. Please paste the full sharing link from your browser.',
@@ -120,11 +130,25 @@ export const fetchSheetPurchases = async (
   }
 
   const csvText = await response.text();
+  const { data } = Papa.parse<string[]>(csvText, { skipEmptyLines: true });
+  return data;
+};
 
-  const { data } = Papa.parse<string[]>(csvText, {
-    skipEmptyLines: true,
-  });
-
+/**
+ * Maps raw CSV rows to `Purchase` objects, silently discarding any row where
+ * the price, amount, or spent columns don't contain valid finite numbers —
+ * this naturally filters out header rows, empty rows, and label rows.
+ *
+ * @param rows  - 2-D array from `fetchSheetRows`.
+ * @param config - Column mapping configuration (without the URL).
+ * @param userId - Authenticated user ID used to populate Purchase.user_id.
+ * @returns An array of Purchase objects sorted by date descending.
+ */
+export const mapRowsToPurchases = (
+  rows: string[][],
+  config: Omit<SheetColumnConfig, 'sheetsUrl'>,
+  userId: string,
+): Purchase[] => {
   const dateIdx = columnLetterToIndex(config.colDate);
   const priceIdx = columnLetterToIndex(config.colPrice);
   const amountIdx = columnLetterToIndex(config.colAmount);
@@ -132,7 +156,7 @@ export const fetchSheetPurchases = async (
 
   const purchases: Purchase[] = [];
 
-  data.forEach((row, rowIndex) => {
+  rows.forEach((row, rowIndex) => {
     const rawPrice = row[priceIdx] ?? '';
     const rawAmount = row[amountIdx] ?? '';
     const rawSpent = row[spentIdx] ?? '';
@@ -163,4 +187,44 @@ export const fetchSheetPurchases = async (
     (a, b) =>
       new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime(),
   );
+};
+
+/**
+ * Extracts the numeric value stored at a specific cell reference within an
+ * already-parsed set of CSV rows.
+ *
+ * This is used to read the user's total BTC balance from a dedicated
+ * spreadsheet cell (e.g. 'I7') without issuing an additional network request.
+ *
+ * @param rows    - 2-D array from `fetchSheetRows`.
+ * @param cellRef - Cell reference string, e.g. 'I7' or 'AB12'.
+ * @returns The parsed number, or null if the reference is invalid or the
+ *          value at that position is not a finite number.
+ */
+export const extractCellValue = (rows: string[][], cellRef: string): number | null => {
+  const parsed = parseCellReference(cellRef);
+  if (!parsed) return null;
+
+  const row = rows[parsed.rowIndex];
+  if (!row) return null;
+
+  const val = row[parsed.colIndex] ?? '';
+  const num = parseNumericValue(val);
+  return isFinite(num) ? num : null;
+};
+
+/**
+ * Convenience function that fetches and parses a Google Sheet in one step.
+ * Internally calls `fetchSheetRows` + `mapRowsToPurchases`.
+ *
+ * @param config - Column mapping and sheet URL configuration.
+ * @param userId - The authenticated user's ID.
+ * @returns An array of Purchase objects sorted by date descending.
+ */
+export const fetchSheetPurchases = async (
+  config: SheetColumnConfig,
+  userId: string,
+): Promise<Purchase[]> => {
+  const rows = await fetchSheetRows(config.sheetsUrl);
+  return mapRowsToPurchases(rows, config, userId);
 };

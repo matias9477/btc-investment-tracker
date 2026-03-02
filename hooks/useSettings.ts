@@ -42,6 +42,7 @@ export const useSettings = () => {
               sheets_col_price: 'B',
               sheets_col_amount: 'C',
               sheets_col_spent: 'D',
+              manual_btc_balance_cell: null,
             }])
             .select()
             .single();

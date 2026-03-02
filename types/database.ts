@@ -29,6 +29,12 @@ export interface UserSettings {
   sheets_col_amount: string;
   /** Column letter for the USD spent field (e.g. 'D') */
   sheets_col_spent: string;
+  /**
+   * Optional cell reference (e.g. 'I7') pointing to the total BTC balance
+   * in the spreadsheet. When set, the app reads this cell on every sync
+   * instead of using the manually entered balance.
+   */
+  manual_btc_balance_cell: string | null;
   created_at: string;
   updated_at: string;
 }
