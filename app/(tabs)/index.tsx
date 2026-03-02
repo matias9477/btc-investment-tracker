@@ -27,7 +27,13 @@ import { calculateDashboardMetrics, formatUSD, formatBTC, formatPercentage, form
  */
 export default function DashboardScreen() {
   const router = useRouter();
-  const { purchases, loading: purchasesLoading, isSheetConfigured, refresh: refreshPurchases } = usePurchases();
+  const {
+    purchases,
+    sheetBtcBalance,
+    loading: purchasesLoading,
+    isSheetConfigured,
+    refresh: refreshPurchases,
+  } = usePurchases();
   const { settings, loading: settingsLoading, refresh: refreshSettings } = useSettings();
   const { price, priceChange24h, loading: priceLoading, fetchedAt, refresh: refreshPrice } = useBitcoinPrice();
   const [refreshing, setRefreshing] = useState(false);
@@ -68,7 +74,13 @@ export default function DashboardScreen() {
     );
   }
 
-  const metrics = calculateDashboardMetrics(purchases, settings, price);
+  // When the user configured a spreadsheet cell for their BTC balance, prefer
+  // that value over the manually entered one (cell reference wins when present).
+  const effectiveSettings = settings
+    ? { ...settings, manual_btc_balance: sheetBtcBalance ?? settings.manual_btc_balance }
+    : null;
+
+  const metrics = calculateDashboardMetrics(purchases, effectiveSettings, price);
   const hasManualBalance = metrics.manualTotalBitcoin !== null;
 
   return (
@@ -164,121 +176,160 @@ export default function DashboardScreen() {
                 fetchedAt={fetchedAt || undefined} 
               />
 
-              {/* Basic Portfolio Stats */}
+              {/* ── Investment Section ─────────────────────────────── */}
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Overview</Text>
-              </View>
-              <View style={styles.grid}>
-                <DashboardCard
-                  title="Total Invested"
-                  value={formatUSD(metrics.totalInvestment)}
-                  compact
-                  explanation="Total USD spent across all your Bitcoin purchases."
-                />
-                <DashboardCard
-                  title="Total BTC Bought"
-                  value={formatBTC(metrics.totalBoughtBitcoin)}
-                  compact
-                  explanation="Total amount of Bitcoin you have purchased across all recorded transactions."
-                />
+                <Text style={styles.sectionTitle}>Investment</Text>
               </View>
 
-              {/* Interest / Gain Metrics - Only if manual balance exists */}
-              {hasManualBalance && (
-                <>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Yield & Interest</Text>
-                  </View>
-                  <View style={styles.grid}>
-                    <DashboardCard
-                      title="Yield Amount"
-                      value={formatBTC(metrics.interestInBtc)}
-                      positive={metrics.interestInBtc > 0}
-                      negative={metrics.interestInBtc < 0}
-                      compact
-                      explanation="The difference in BTC between your wallet balance and your total purchases."
-                    />
-                    <DashboardCard
-                      title="Yield Value"
-                      value={formatUSD(metrics.interestInUsd)}
-                      positive={metrics.interestInUsd > 0}
-                      negative={metrics.interestInUsd < 0}
-                      compact
-                      explanation="The current market value of your earned interest/yield."
-                    />
-                    <DashboardCard
-                      title="Base ROI"
-                      value={formatPercentage(metrics.roiPurchased)}
-                      positive={metrics.roiPurchased > 0}
-                      negative={metrics.roiPurchased < 0}
-                      compact
-                      explanation="ROI based only on your purchases."
-                    />
-                    <DashboardCard
-                      title="Net ROI"
-                      value={formatPercentage(metrics.roiReal)}
-                      positive={metrics.roiReal > 0}
-                      negative={metrics.roiReal < 0}
-                      compact
-                      explanation="Total ROI including your yield/interest."
-                    />
-                  </View>
-                </>
-              )}
+              {/* Total Invested — always full-width, most prominent number */}
+              <DashboardCard
+                title="Total Invested"
+                value={formatUSD(metrics.totalInvestment)}
+                explanation="Total USD spent across all your recorded Bitcoin purchases."
+              />
 
-              {/* Performance Comparison */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Performance</Text>
-              </View>
+              {/* Value row */}
               <View style={styles.grid}>
                 <DashboardCard
-                  title="Break-even"
-                  value={formatUSD(metrics.equilibriumPrice)}
+                  title={hasManualBalance ? 'Value (Purchases)' : 'Current Value'}
+                  value={formatUSD(metrics.finalValuePurchased)}
                   compact
-                  explanation="The Bitcoin price needed for your portfolio to have zero profit/loss. Total Investment / Total BTC Purchased."
+                  explanation="Current market value of the BTC you purchased."
                 />
-                <View style={{ width: '45%', marginHorizontal: 4 }} /> 
-                
-                {/* Profit Row */}
+                {hasManualBalance && (
+                  <DashboardCard
+                    title="Value (Wallet)"
+                    value={formatUSD(metrics.finalValueReal)}
+                    compact
+                    explanation="Current market value of your actual wallet balance, including yield."
+                  />
+                )}
+              </View>
+
+              {/* Profit row */}
+              <View style={styles.grid}>
                 <DashboardCard
-                  title="P/L (Purchased)"
+                  title={hasManualBalance ? 'Profit (Purchases)' : 'Profit / Loss'}
                   value={formatUSD(metrics.profitPurchased)}
                   positive={metrics.profitPurchased > 0}
                   negative={metrics.profitPurchased < 0}
                   compact
-                  explanation="Profit/loss based ONLY on your recorded transactions."
+                  explanation="Profit or loss based only on your recorded transactions."
                 />
                 {hasManualBalance ? (
                   <DashboardCard
-                    title="P/L (Real)"
+                    title="Profit (Wallet)"
                     value={formatUSD(metrics.profitReal)}
                     positive={metrics.profitReal > 0}
                     negative={metrics.profitReal < 0}
                     compact
-                    explanation="Total net profit/loss, including any interest or external gains in your wallet."
+                    explanation="Total net profit including any interest or yield in your wallet."
                   />
                 ) : (
-                  <View style={{ width: '45%', marginHorizontal: 4 }} />
+                  <DashboardCard
+                    title="ROI"
+                    value={formatPercentage(metrics.roiPurchased)}
+                    positive={metrics.roiPurchased > 0}
+                    negative={metrics.roiPurchased < 0}
+                    compact
+                    explanation="Return on investment based on your recorded purchases."
+                  />
                 )}
+              </View>
 
-                {/* Value Row */}
+              {/* Break-even — full-width in no-interest mode */}
+              {!hasManualBalance && (
                 <DashboardCard
-                  title="Value (Purchased)"
-                  value={formatUSD(metrics.finalValuePurchased)}
+                  title="Break-even Price"
+                  value={formatUSD(metrics.equilibriumPrice)}
+                  explanation="The BTC price at which your portfolio has zero profit/loss. Total Invested ÷ BTC Purchased."
+                />
+              )}
+
+              {/* ── Bitcoin Holdings Section ───────────────────────── */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Bitcoin Holdings</Text>
+              </View>
+
+              <View style={styles.grid}>
+                <DashboardCard
+                  title="BTC Purchased"
+                  value={formatBTC(metrics.totalBoughtBitcoin)}
                   compact
-                  explanation="The current value of the total BTC you have purchased."
+                  explanation="Total Bitcoin accumulated across all your purchases."
                 />
                 {hasManualBalance ? (
                   <DashboardCard
-                    title="Value (Real)"
-                    value={formatUSD(metrics.finalValueReal)}
+                    title="BTC in Wallet"
+                    value={formatBTC(metrics.manualTotalBitcoin!)}
                     compact
-                    explanation="The current value of your actual wallet balance."
+                    explanation="Your actual wallet balance, including all earned yield."
                   />
                 ) : (
-                  <View style={{ width: '45%', marginHorizontal: 4 }} />
+                  // No manual balance — show a useful second stat instead of an empty hole
+                  <DashboardCard
+                    title="Avg. Buy Price"
+                    value={formatUSD(metrics.equilibriumPrice)}
+                    compact
+                    explanation="Your average purchase price per BTC (same as break-even). Total Invested ÷ BTC Purchased."
+                  />
                 )}
               </View>
+
+              {/* ── Yield Section — only visible when a wallet balance is set ── */}
+              {hasManualBalance && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Yield</Text>
+                  </View>
+                  <View style={styles.grid}>
+                    <DashboardCard
+                      title="Yield in BTC"
+                      value={formatBTC(metrics.interestInBtc)}
+                      positive={metrics.interestInBtc > 0}
+                      negative={metrics.interestInBtc < 0}
+                      compact
+                      explanation="BTC earned through interest or yield: wallet balance minus total purchases."
+                    />
+                    <DashboardCard
+                      title="Yield in USD"
+                      value={formatUSD(metrics.interestInUsd)}
+                      positive={metrics.interestInUsd > 0}
+                      negative={metrics.interestInUsd < 0}
+                      compact
+                      explanation="Current market value of your earned BTC yield."
+                    />
+                  </View>
+
+                  {/* ── Performance — only with interest, to compare both ROIs ── */}
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Performance</Text>
+                  </View>
+                  <View style={styles.grid}>
+                    <DashboardCard
+                      title="ROI (Purchases)"
+                      value={formatPercentage(metrics.roiPurchased)}
+                      positive={metrics.roiPurchased > 0}
+                      negative={metrics.roiPurchased < 0}
+                      compact
+                      explanation="Return on investment based only on your purchase transactions."
+                    />
+                    <DashboardCard
+                      title="ROI (Wallet)"
+                      value={formatPercentage(metrics.roiReal)}
+                      positive={metrics.roiReal > 0}
+                      negative={metrics.roiReal < 0}
+                      compact
+                      explanation="Total ROI including earned yield in your wallet."
+                    />
+                  </View>
+                  <DashboardCard
+                    title="Break-even Price"
+                    value={formatUSD(metrics.equilibriumPrice)}
+                    explanation="The BTC price at which your purchases break even. Total Invested ÷ BTC Purchased."
+                  />
+                </>
+              )}
 
               {/* Recent Activity */}
               {recentPurchases.length > 0 && (
