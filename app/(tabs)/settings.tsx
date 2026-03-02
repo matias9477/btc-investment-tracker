@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Switch,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -16,17 +15,40 @@ import { supabase } from '../../lib/supabase';
 import { useSettings } from '../../hooks/useSettings';
 import { formatDate } from '../../lib/calculations';
 
+/** Validates that a column value is one or two uppercase letters (e.g. 'A', 'AB'). */
+const isValidColumn = (val: string): boolean => /^[A-Za-z]{1,2}$/.test(val.trim());
+
 /**
- * Settings screen for managing user preferences and manual balance
+ * Settings screen for managing user preferences, manual balance,
+ * and Google Sheets data source configuration.
  */
 export default function SettingsScreen() {
   const router = useRouter();
   const { settings, loading, updateSettings } = useSettings();
-  
+
   const [manualBalance, setManualBalance] = useState(
-    settings?.manual_btc_balance?.toString() ?? ''
+    settings?.manual_btc_balance?.toString() ?? '',
   );
-  const [saving, setSaving] = useState(false);
+  const [savingBalance, setSavingBalance] = useState(false);
+
+  // Google Sheets state
+  const [sheetsUrl, setSheetsUrl] = useState(settings?.sheets_url ?? '');
+  const [colDate, setColDate] = useState(settings?.sheets_col_date ?? 'A');
+  const [colPrice, setColPrice] = useState(settings?.sheets_col_price ?? 'B');
+  const [colAmount, setColAmount] = useState(settings?.sheets_col_amount ?? 'C');
+  const [colSpent, setColSpent] = useState(settings?.sheets_col_spent ?? 'D');
+  const [savingSheet, setSavingSheet] = useState(false);
+
+  // Sync local state when settings load from Supabase
+  useEffect(() => {
+    if (!settings) return;
+    setManualBalance(settings.manual_btc_balance?.toString() ?? '');
+    setSheetsUrl(settings.sheets_url ?? '');
+    setColDate(settings.sheets_col_date ?? 'A');
+    setColPrice(settings.sheets_col_price ?? 'B');
+    setColAmount(settings.sheets_col_amount ?? 'C');
+    setColSpent(settings.sheets_col_spent ?? 'D');
+  }, [settings]);
 
   const handleUpdateManualBalance = async () => {
     if (!manualBalance) {
@@ -40,17 +62,63 @@ export default function SettingsScreen() {
       return;
     }
 
-    setSaving(true);
+    setSavingBalance(true);
     try {
       await updateSettings({
         manual_btc_balance: balance,
         manual_balance_updated_at: new Date().toISOString(),
       });
       Alert.alert('Success', 'Manual balance updated');
-    } catch (error: any) {
+    } catch {
       Alert.alert('Error', 'Failed to update manual balance');
     } finally {
-      setSaving(false);
+      setSavingBalance(false);
+    }
+  };
+
+  const handleSaveSheetConfig = async () => {
+    if (!sheetsUrl.trim()) {
+      Alert.alert('Error', 'Please enter your Google Sheets URL');
+      return;
+    }
+
+    if (!sheetsUrl.includes('docs.google.com/spreadsheets')) {
+      Alert.alert(
+        'Invalid URL',
+        'Please paste the full Google Sheets sharing URL (e.g. https://docs.google.com/spreadsheets/d/…)',
+      );
+      return;
+    }
+
+    const invalidCols = [
+      { label: 'Date', val: colDate },
+      { label: 'BTC Price', val: colPrice },
+      { label: 'BTC Amount', val: colAmount },
+      { label: 'USD Spent', val: colSpent },
+    ].filter((c) => !isValidColumn(c.val));
+
+    if (invalidCols.length > 0) {
+      Alert.alert(
+        'Invalid Column',
+        `Column for "${invalidCols[0].label}" must be a letter (A–Z or AA–ZZ).`,
+      );
+      return;
+    }
+
+    setSavingSheet(true);
+    try {
+      await updateSettings({
+        sheets_url: sheetsUrl.trim(),
+        sheets_col_date: colDate.toUpperCase().trim(),
+        sheets_col_price: colPrice.toUpperCase().trim(),
+        sheets_col_amount: colAmount.toUpperCase().trim(),
+        sheets_col_spent: colSpent.toUpperCase().trim(),
+      });
+      Alert.alert('Saved', 'Google Sheets configuration saved. Pull to refresh on Dashboard or Purchases to load your data.');
+    } catch {
+      Alert.alert('Error', 'Failed to save Google Sheets configuration');
+    } finally {
+      setSavingSheet(false);
     }
   };
 
@@ -79,66 +147,169 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Settings</Text>
+        <View style={styles.content}>
+          <Text style={styles.title}>Settings</Text>
 
-        {/* Manual Balance Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Manual Wallet Balance</Text>
-          </View>
-
-          <Text style={styles.sectionDescription}>
-            Enter your actual Bitcoin balance from your wallet. If provided, this balance 
-            will be used to calculate your total portfolio value instead of just 
-            summing your purchases.
-          </Text>
-
-          {settings?.manual_balance_updated_at && (
-            <Text style={styles.lastUpdated}>
-              Last updated: {formatDate(settings.manual_balance_updated_at)}
+          {/* Google Sheets Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Google Sheets Data Source</Text>
+            </View>
+            <Text style={styles.sectionDescription}>
+              Connect a Google Sheet that contains your purchase history. The sheet
+              must be set to "Anyone with the link can view". Rows without numeric
+              values in the price/amount/spent columns are automatically ignored.
             </Text>
-          )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Current BTC Balance</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0.00000000"
-              placeholderTextColor="#666"
-              value={manualBalance}
-              onChangeText={setManualBalance}
-              keyboardType="decimal-pad"
-              editable={!saving}
-            />
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Spreadsheet URL</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="https://docs.google.com/spreadsheets/d/…"
+                placeholderTextColor="#555"
+                value={sheetsUrl}
+                onChangeText={setSheetsUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!savingSheet}
+              />
+            </View>
+
+            <Text style={styles.columnSectionLabel}>Column Mapping</Text>
+            <Text style={styles.sectionDescription}>
+              Enter the column letter (A, B, C…) for each field in your sheet.
+            </Text>
+
+            <View style={styles.columnGrid}>
+              <View style={styles.columnItem}>
+                <Text style={styles.inputLabel}>Date</Text>
+                <TextInput
+                  style={styles.columnInput}
+                  value={colDate}
+                  onChangeText={(v) => setColDate(v.toUpperCase())}
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  editable={!savingSheet}
+                  accessibilityLabel="Date column"
+                />
+              </View>
+              <View style={styles.columnItem}>
+                <Text style={styles.inputLabel}>BTC Price</Text>
+                <TextInput
+                  style={styles.columnInput}
+                  value={colPrice}
+                  onChangeText={(v) => setColPrice(v.toUpperCase())}
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  editable={!savingSheet}
+                  accessibilityLabel="BTC Price column"
+                />
+              </View>
+              <View style={styles.columnItem}>
+                <Text style={styles.inputLabel}>BTC Amount</Text>
+                <TextInput
+                  style={styles.columnInput}
+                  value={colAmount}
+                  onChangeText={(v) => setColAmount(v.toUpperCase())}
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  editable={!savingSheet}
+                  accessibilityLabel="BTC Amount column"
+                />
+              </View>
+              <View style={styles.columnItem}>
+                <Text style={styles.inputLabel}>USD Spent</Text>
+                <TextInput
+                  style={styles.columnInput}
+                  value={colSpent}
+                  onChangeText={(v) => setColSpent(v.toUpperCase())}
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  editable={!savingSheet}
+                  accessibilityLabel="USD Spent column"
+                />
+              </View>
+            </View>
+
             <TouchableOpacity
-              style={[styles.button, saving && styles.buttonDisabled]}
-              onPress={handleUpdateManualBalance}
-              disabled={saving}
+              style={[styles.button, savingSheet && styles.buttonDisabled]}
+              onPress={handleSaveSheetConfig}
+              disabled={savingSheet}
+              accessibilityLabel="Save Google Sheets configuration"
+              accessibilityRole="button"
             >
-              {saving ? (
+              {savingSheet ? (
                 <ActivityIndicator size="small" color="#000" />
               ) : (
-                <Text style={styles.buttonText}>Update Balance</Text>
+                <Text style={styles.buttonText}>Save Sheet Configuration</Text>
               )}
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* App Info Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>App Info</Text>
+          {/* Manual Balance Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Manual Wallet Balance</Text>
+            </View>
+
+            <Text style={styles.sectionDescription}>
+              Enter your actual Bitcoin balance from your wallet. If provided, this
+              balance will be used to calculate your total portfolio value instead
+              of just summing your purchases.
+            </Text>
+
+            {settings?.manual_balance_updated_at && (
+              <Text style={styles.lastUpdated}>
+                Last updated: {formatDate(settings.manual_balance_updated_at)}
+              </Text>
+            )}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Current BTC Balance</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="0.00000000"
+                placeholderTextColor="#666"
+                value={manualBalance}
+                onChangeText={setManualBalance}
+                keyboardType="decimal-pad"
+                editable={!savingBalance}
+              />
+              <TouchableOpacity
+                style={[styles.button, savingBalance && styles.buttonDisabled]}
+                onPress={handleUpdateManualBalance}
+                disabled={savingBalance}
+                accessibilityLabel="Update manual balance"
+                accessibilityRole="button"
+              >
+                {savingBalance ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Text style={styles.buttonText}>Update Balance</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.appInfo}>BTC Investment Tracker v1.0.0</Text>
-        </View>
 
-        {/* Sign Out Button */}
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          {/* App Info Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>App Info</Text>
+            </View>
+            <Text style={styles.appInfo}>BTC Investment Tracker v1.0.0</Text>
+          </View>
+
+          {/* Sign Out Button */}
+          <TouchableOpacity
+            style={styles.signOutButton}
+            onPress={handleSignOut}
+            accessibilityLabel="Sign out"
+            accessibilityRole="button"
+          >
+            <Text style={styles.signOutButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -185,31 +356,41 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 20,
   },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  settingInfo: {
-    flex: 1,
-    marginRight: 16,
-  },
-  settingLabel: {
-    fontSize: 16,
-    color: '#FFF',
+  columnSectionLabel: {
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
+    color: '#CCC',
+    marginBottom: 6,
+    marginTop: 4,
   },
-  settingDescription: {
-    fontSize: 12,
-    color: '#999',
+  columnGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
+  columnItem: {
+    flex: 1,
+    minWidth: '40%',
+  },
+  columnInput: {
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 18,
+    color: '#F7931A',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    letterSpacing: 2,
   },
   inputGroup: {
-    marginTop: 16,
+    marginTop: 4,
   },
   inputLabel: {
-    fontSize: 14,
-    color: '#FFF',
+    fontSize: 13,
+    color: '#AAA',
     fontWeight: '600',
     marginBottom: 8,
   },
@@ -219,7 +400,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
     borderRadius: 12,
     padding: 16,
-    fontSize: 16,
+    fontSize: 14,
     color: '#FFF',
     marginBottom: 12,
   },
@@ -228,6 +409,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginTop: 4,
   },
   buttonDisabled: {
     opacity: 0.6,
