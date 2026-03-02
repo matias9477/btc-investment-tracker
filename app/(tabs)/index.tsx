@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,24 +8,26 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { usePurchases } from '../../hooks/usePurchases';
 import { useSettings } from '../../hooks/useSettings';
 import { useBitcoinPrice } from '../../hooks/useBitcoinPrice';
 import { DashboardCard } from '../../components/DashboardCard';
 import { PortfolioHero } from '../../components/PortfolioHero';
 import { PriceCard } from '../../components/PriceCard';
-import { calculateDashboardMetrics, formatUSD, formatBTC, formatPercentage, formatDate, formatDateShort } from '../../lib/calculations';
+import { calculateDashboardMetrics, formatUSD, formatBTC, formatPercentage, formatDateShort } from '../../lib/calculations';
 
 /**
  * Dashboard screen showing all investment metrics
  */
 export default function DashboardScreen() {
   const router = useRouter();
-  const { purchases, loading: purchasesLoading, refresh: refreshPurchases } = usePurchases();
+  const { purchases, loading: purchasesLoading, isSheetConfigured, refresh: refreshPurchases } = usePurchases();
   const { settings, loading: settingsLoading, refresh: refreshSettings } = useSettings();
   const { price, priceChange24h, loading: priceLoading, fetchedAt, refresh: refreshPrice } = useBitcoinPrice();
   const [refreshing, setRefreshing] = useState(false);
@@ -38,10 +40,6 @@ export default function DashboardScreen() {
       refreshPrice(),
     ]);
     setRefreshing(false);
-  };
-
-  const handleAddPurchase = () => {
-    router.push('/add-purchase');
   };
 
   const recentPurchases = useMemo(() => {
@@ -76,41 +74,76 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" />
+      
+      {/* Premium Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.avatarContainer}>
+            <Ionicons name="person" size={20} color="#FFF" />
+          </View>
+          <View>
+            <Text style={styles.headerGreeting}>Welcome back</Text>
+            <Text style={styles.headerTitle}>Portfolio</Text>
+          </View>
+        </View>
+        <TouchableOpacity 
+          style={styles.headerButton}
+          onPress={() => router.push('/(tabs)/settings')}
+        >
+          <Ionicons name="settings-outline" size={24} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
             tintColor="#F7931A"
+            colors={['#F7931A']}
           />
         }
       >
         <View style={styles.content}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.headerGreeting}>Welcome back</Text>
-              <Text style={styles.headerTitle}>Dashboard</Text>
-            </View>
-            <TouchableOpacity style={styles.addIconButton} onPress={handleAddPurchase}>
-              <Ionicons name="add" size={28} color="#000" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Empty State */}
-          {purchases.length === 0 ? (
+          {/* Empty State — no sheet configured yet */}
+          {!isSheetConfigured || purchases.length === 0 ? (
             <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <Ionicons name="stats-chart" size={80} color="#333" />
+              <View style={styles.emptyIconGlow}>
+                <LinearGradient
+                  colors={['#F7931A', '#FFAB40']}
+                  style={styles.emptyIconContainer}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="document-text" size={48} color="#FFF" />
+                </LinearGradient>
               </View>
-              <Text style={styles.emptyStateTitle}>No Purchases Yet</Text>
-              <Text style={styles.emptyStateText}>
-                Start tracking your Bitcoin investments by adding your first purchase
+              <Text style={styles.emptyStateTitle}>
+                {!isSheetConfigured ? 'Connect Your Data' : 'No Data Found'}
               </Text>
-              <TouchableOpacity style={styles.emptyStateButton} onPress={handleAddPurchase}>
-                <Text style={styles.emptyStateButtonText}>Add First Purchase</Text>
+              <Text style={styles.emptyStateText}>
+                {!isSheetConfigured
+                  ? 'Link your Google Sheet to automatically sync your Bitcoin purchases and track your portfolio.'
+                  : 'Your sheet appears to be empty or the column mapping is incorrect. Check your configuration.'}
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => router.push('/(tabs)/settings')}
+                accessibilityLabel="Go to Settings to configure Google Sheet"
+                accessibilityRole="button"
+              >
+                <LinearGradient
+                  colors={['#F7931A', '#E87D0D']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.emptyStateButton}
+                >
+                  <Text style={styles.emptyStateButtonText}>Go to Settings</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#000" style={{ marginLeft: 8 }} />
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           ) : (
@@ -132,7 +165,9 @@ export default function DashboardScreen() {
               />
 
               {/* Basic Portfolio Stats */}
-              <Text style={styles.sectionTitle}>Portfolio Summary</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Overview</Text>
+              </View>
               <View style={styles.grid}>
                 <DashboardCard
                   title="Total Invested"
@@ -151,7 +186,9 @@ export default function DashboardScreen() {
               {/* Interest / Gain Metrics - Only if manual balance exists */}
               {hasManualBalance && (
                 <>
-                  <Text style={styles.sectionTitle}>Interest & Yield</Text>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Yield & Interest</Text>
+                  </View>
                   <View style={styles.grid}>
                     <DashboardCard
                       title="Yield Amount"
@@ -190,7 +227,9 @@ export default function DashboardScreen() {
               )}
 
               {/* Performance Comparison */}
-              <Text style={styles.sectionTitle}>Performance Analysis</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Performance</Text>
+              </View>
               <View style={styles.grid}>
                 <DashboardCard
                   title="Break-even"
@@ -244,31 +283,36 @@ export default function DashboardScreen() {
               {/* Recent Activity */}
               {recentPurchases.length > 0 && (
                 <View style={styles.recentSection}>
-                  <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionTitle}>Recent Activity</Text>
                     <TouchableOpacity onPress={() => router.push('/purchases')}>
                       <Text style={styles.seeAllText}>See All</Text>
                     </TouchableOpacity>
                   </View>
-                  <View style={styles.recentTable}>
-                    <View style={styles.recentTableHeader}>
-                      <Text style={[styles.recentHeaderCell, { width: 65 }]}>Date</Text>
-                      <Text style={[styles.recentHeaderCell, { flex: 1.2, paddingLeft: 4 }]}>Price</Text>
-                      <Text style={[styles.recentHeaderCell, { flex: 1, textAlign: 'right' }]}>Spent</Text>
-                    </View>
-                    {recentPurchases.map((purchase) => (
-                      <TouchableOpacity 
+                  
+                  <View style={styles.recentList}>
+                    {recentPurchases.map((purchase, index) => (
+                      <View 
                         key={purchase.id} 
-                        style={styles.recentRow}
-                        onPress={() => router.push({
-                          pathname: '/edit-purchase',
-                          params: { id: purchase.id }
-                        })}
+                        style={[
+                          styles.recentItem,
+                          index === recentPurchases.length - 1 && styles.recentItemLast
+                        ]}
                       >
-                        <Text style={[styles.recentCell, { width: 65 }]}>{formatDateShort(purchase.purchase_date)}</Text>
-                        <Text style={[styles.recentCell, { flex: 1.2, paddingLeft: 4 }]}>{formatUSD(purchase.btc_price_at_purchase)}</Text>
-                        <Text style={[styles.recentCell, { flex: 1, textAlign: 'right' }]}>{formatUSD(purchase.usd_spent)}</Text>
-                      </TouchableOpacity>
+                        <View style={styles.recentItemLeft}>
+                          <View style={styles.recentIconContainer}>
+                            <Ionicons name="arrow-down" size={16} color="#10B981" />
+                          </View>
+                          <View>
+                            <Text style={styles.recentItemTitle}>Bought BTC</Text>
+                            <Text style={styles.recentItemDate}>{formatDateShort(purchase.purchase_date)}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.recentItemRight}>
+                          <Text style={styles.recentItemAmount}>+{formatBTC(purchase.btc_amount)}</Text>
+                          <Text style={styles.recentItemPrice}>{formatUSD(purchase.usd_spent)}</Text>
+                        </View>
+                      </View>
                     ))}
                   </View>
                 </View>
@@ -319,6 +363,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 16,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    zIndex: 10,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#222',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  headerGreeting: {
+    fontSize: 13,
+    color: '#888',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    letterSpacing: 0.5,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#111',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#222',
+  },
   scrollView: {
     flex: 1,
   },
@@ -328,50 +419,21 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-    marginTop: 10,
-  },
-  headerGreeting: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  addIconButton: {
-    backgroundColor: '#F7931A',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#F7931A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+  sectionHeader: {
+    marginBottom: 12,
+    marginTop: 8,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFF',
-    marginTop: 12,
-    marginBottom: 16,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
-  sectionHeader: {
+  sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 12,
   },
   seeAllText: {
     color: '#F7931A',
@@ -379,80 +441,109 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   recentSection: {
-    marginTop: 12,
+    marginTop: 16,
   },
-  recentTable: {
+  recentList: {
     backgroundColor: '#111',
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#222',
     overflow: 'hidden',
-    marginTop: 4,
   },
-  recentTableHeader: {
+  recentItem: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#1A1A1A',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  recentHeaderCell: {
-    fontSize: 11,
-    color: '#888',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  recentRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#222',
   },
-  recentCell: {
-    fontSize: 13,
+  recentItemLast: {
+    borderBottomWidth: 0,
+  },
+  recentItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recentIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  recentItemTitle: {
+    fontSize: 15,
     color: '#FFF',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  recentItemDate: {
+    fontSize: 12,
+    color: '#888',
+  },
+  recentItemRight: {
+    alignItems: 'flex-end',
+  },
+  recentItemAmount: {
+    fontSize: 15,
+    color: '#10B981',
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  recentItemPrice: {
+    fontSize: 13,
+    color: '#888',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: -4,
+    marginBottom: 16,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyIconGlow: {
+    shadowColor: '#F7931A',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+    marginBottom: 32,
   },
   emptyIconContainer: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: '#111',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
   },
   emptyStateTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFF',
     marginBottom: 12,
+    textAlign: 'center',
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#666',
+    color: '#888',
     textAlign: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 20,
+    marginBottom: 40,
     lineHeight: 24,
   },
   emptyStateButton: {
-    backgroundColor: '#F7931A',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 16,
-    elevation: 4,
   },
   emptyStateButtonText: {
     color: '#000',

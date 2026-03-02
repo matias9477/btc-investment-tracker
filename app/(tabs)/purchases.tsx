@@ -1,4 +1,13 @@
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  StatusBar,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,22 +15,15 @@ import { usePurchases } from '../../hooks/usePurchases';
 import { PurchaseTable } from '../../components/PurchaseTable';
 
 /**
- * Screen displaying list of all purchases with management options
+ * Screen displaying the full list of purchases fetched from Google Sheets.
+ * When no sheet is configured, prompts the user to set one up in Settings.
  */
 export default function PurchasesScreen() {
   const router = useRouter();
-  const { purchases, loading, deletePurchase } = usePurchases();
+  const { purchases, loading, isSheetConfigured, refresh } = usePurchases();
 
-  const handleDelete = async (id: string) => {
-    try {
-      await deletePurchase(id);
-    } catch (error: any) {
-      alert(error.message || 'Failed to delete purchase');
-    }
-  };
-
-  const handleAddPurchase = () => {
-    router.push('/add-purchase');
+  const handleGoToSettings = () => {
+    router.push('/(tabs)/settings');
   };
 
   if (loading) {
@@ -36,33 +38,63 @@ export default function PurchasesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" />
       <View style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={refresh}
+              tintColor="#F7931A"
+            />
+          }
+        >
           <View style={styles.header}>
             <View>
               <Text style={styles.headerTitle}>Transactions</Text>
               <Text style={styles.headerSubtitle}>{purchases.length} total entries</Text>
             </View>
-            <TouchableOpacity style={styles.addIconButton} onPress={handleAddPurchase}>
-              <Ionicons name="add" size={28} color="#000" />
-            </TouchableOpacity>
           </View>
 
-          {purchases.length === 0 ? (
+          {!isSheetConfigured ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="document-text-outline" size={80} color="#333" />
+              </View>
+              <Text style={styles.emptyStateTitle}>No Sheet Connected</Text>
+              <Text style={styles.emptyStateText}>
+                Connect a Google Sheet in Settings to load your purchase history automatically.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyStateButton}
+                onPress={handleGoToSettings}
+                accessibilityLabel="Go to Settings to configure Google Sheet"
+                accessibilityRole="button"
+              >
+                <Text style={styles.emptyStateButtonText}>Go to Settings</Text>
+              </TouchableOpacity>
+            </View>
+          ) : purchases.length === 0 ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIconContainer}>
                 <Ionicons name="receipt-outline" size={80} color="#333" />
               </View>
-              <Text style={styles.emptyStateTitle}>No Records Yet</Text>
+              <Text style={styles.emptyStateTitle}>No Data Found</Text>
               <Text style={styles.emptyStateText}>
-                Add your first Bitcoin purchase to start tracking your history in this grid
+                Your sheet appears to be empty or the column mapping doesn't match any
+                rows with numeric data. Check your configuration in Settings.
               </Text>
-              <TouchableOpacity style={styles.emptyStateButton} onPress={handleAddPurchase}>
-                <Text style={styles.emptyStateButtonText}>Add Purchase</Text>
+              <TouchableOpacity
+                style={styles.emptyStateButton}
+                onPress={handleGoToSettings}
+                accessibilityLabel="Go to Settings to update column mapping"
+                accessibilityRole="button"
+              >
+                <Text style={styles.emptyStateButtonText}>Check Settings</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.tableContainer}>
-              <PurchaseTable purchases={purchases} onDelete={handleDelete} />
+              <PurchaseTable purchases={purchases} />
             </View>
           )}
         </ScrollView>
@@ -103,19 +135,6 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
     marginTop: 4,
-  },
-  addIconButton: {
-    backgroundColor: '#F7931A',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#F7931A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
   },
   tableContainer: {
     marginTop: 8,
