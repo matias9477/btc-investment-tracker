@@ -178,6 +178,7 @@ export default function DashboardScreen() {
 
               {/* ── Investment Section ─────────────────────────────── */}
               <View style={styles.sectionHeader}>
+                <View style={[styles.sectionTitleBar, { backgroundColor: '#F7931A' }]} />
                 <Text style={styles.sectionTitle}>Investment</Text>
               </View>
 
@@ -186,6 +187,10 @@ export default function DashboardScreen() {
                 title="Total Invested"
                 value={formatUSD(metrics.totalInvestment)}
                 explanation="Total USD spent across all your recorded Bitcoin purchases."
+                gradient
+                icon="cash-outline"
+                iconColor="#F7931A"
+                accentColor="#F7931A"
               />
 
               {/* Value row */}
@@ -195,13 +200,23 @@ export default function DashboardScreen() {
                   value={formatUSD(metrics.finalValuePurchased)}
                   compact
                   explanation="Current market value of the BTC you purchased."
+                  accentColor="#3B82F6"
                 />
-                {hasManualBalance && (
+                {hasManualBalance ? (
                   <DashboardCard
                     title="Value (Wallet)"
                     value={formatUSD(metrics.finalValueReal)}
                     compact
                     explanation="Current market value of your actual wallet balance, including yield."
+                    accentColor="#10B981"
+                  />
+                ) : (
+                  <DashboardCard
+                    title="Break-even Price"
+                    value={formatUSD(metrics.equilibriumPrice)}
+                    compact
+                    explanation="The BTC price at which your portfolio has zero profit/loss. Total Invested ÷ BTC Purchased."
+                    accentColor="#F59E0B"
                   />
                 )}
               </View>
@@ -215,6 +230,7 @@ export default function DashboardScreen() {
                   negative={metrics.profitPurchased < 0}
                   compact
                   explanation="Profit or loss based only on your recorded transactions."
+                  accentColor={metrics.profitPurchased >= 0 ? '#10B981' : '#EF4444'}
                 />
                 {hasManualBalance ? (
                   <DashboardCard
@@ -224,6 +240,7 @@ export default function DashboardScreen() {
                     negative={metrics.profitReal < 0}
                     compact
                     explanation="Total net profit including any interest or yield in your wallet."
+                    accentColor={metrics.profitReal >= 0 ? '#10B981' : '#EF4444'}
                   />
                 ) : (
                   <DashboardCard
@@ -233,21 +250,14 @@ export default function DashboardScreen() {
                     negative={metrics.roiPurchased < 0}
                     compact
                     explanation="Return on investment based on your recorded purchases."
+                    accentColor="#8B5CF6"
                   />
                 )}
               </View>
 
-              {/* Break-even — full-width in no-interest mode */}
-              {!hasManualBalance && (
-                <DashboardCard
-                  title="Break-even Price"
-                  value={formatUSD(metrics.equilibriumPrice)}
-                  explanation="The BTC price at which your portfolio has zero profit/loss. Total Invested ÷ BTC Purchased."
-                />
-              )}
-
               {/* ── Bitcoin Holdings Section ───────────────────────── */}
               <View style={styles.sectionHeader}>
+                <View style={[styles.sectionTitleBar, { backgroundColor: '#3B82F6' }]} />
                 <Text style={styles.sectionTitle}>Bitcoin Holdings</Text>
               </View>
 
@@ -257,6 +267,7 @@ export default function DashboardScreen() {
                   value={formatBTC(metrics.totalBoughtBitcoin)}
                   compact
                   explanation="Total Bitcoin accumulated across all your purchases."
+                  accentColor="#F7931A"
                 />
                 {hasManualBalance ? (
                   <DashboardCard
@@ -264,6 +275,7 @@ export default function DashboardScreen() {
                     value={formatBTC(metrics.manualTotalBitcoin!)}
                     compact
                     explanation="Your actual wallet balance, including all earned yield."
+                    accentColor="#10B981"
                   />
                 ) : (
                   // No manual balance — show a useful second stat instead of an empty hole
@@ -272,6 +284,7 @@ export default function DashboardScreen() {
                     value={formatUSD(metrics.equilibriumPrice)}
                     compact
                     explanation="Your average purchase price per BTC (same as break-even). Total Invested ÷ BTC Purchased."
+                    accentColor="#EC4899"
                   />
                 )}
               </View>
@@ -280,6 +293,7 @@ export default function DashboardScreen() {
               {hasManualBalance && (
                 <>
                   <View style={styles.sectionHeader}>
+                    <View style={[styles.sectionTitleBar, { backgroundColor: '#10B981' }]} />
                     <Text style={styles.sectionTitle}>Yield</Text>
                   </View>
                   <View style={styles.grid}>
@@ -290,6 +304,7 @@ export default function DashboardScreen() {
                       negative={metrics.interestInBtc < 0}
                       compact
                       explanation="BTC earned through interest or yield: wallet balance minus total purchases."
+                      accentColor="#10B981"
                     />
                     <DashboardCard
                       title="Yield in USD"
@@ -298,11 +313,13 @@ export default function DashboardScreen() {
                       negative={metrics.interestInUsd < 0}
                       compact
                       explanation="Current market value of your earned BTC yield."
+                      accentColor="#10B981"
                     />
                   </View>
 
                   {/* ── Performance — only with interest, to compare both ROIs ── */}
                   <View style={styles.sectionHeader}>
+                    <View style={[styles.sectionTitleBar, { backgroundColor: '#8B5CF6' }]} />
                     <Text style={styles.sectionTitle}>Performance</Text>
                   </View>
                   <View style={styles.grid}>
@@ -313,6 +330,7 @@ export default function DashboardScreen() {
                       negative={metrics.roiPurchased < 0}
                       compact
                       explanation="Return on investment based only on your purchase transactions."
+                      accentColor="#3B82F6"
                     />
                     <DashboardCard
                       title="ROI (Wallet)"
@@ -321,12 +339,17 @@ export default function DashboardScreen() {
                       negative={metrics.roiReal < 0}
                       compact
                       explanation="Total ROI including earned yield in your wallet."
+                      accentColor="#8B5CF6"
                     />
                   </View>
                   <DashboardCard
                     title="Break-even Price"
                     value={formatUSD(metrics.equilibriumPrice)}
                     explanation="The BTC price at which your purchases break even. Total Invested ÷ BTC Purchased."
+                    gradient
+                    icon="flag-outline"
+                    iconColor="#F59E0B"
+                    accentColor="#F59E0B"
                   />
                 </>
               )}
@@ -471,8 +494,16 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   sectionHeader: {
-    marginBottom: 12,
-    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 12,
+  },
+  sectionTitleBar: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+    marginRight: 10,
   },
   sectionTitle: {
     fontSize: 18,
@@ -551,7 +582,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -4,
+    marginHorizontal: -6,
     marginBottom: 16,
   },
   emptyState: {
