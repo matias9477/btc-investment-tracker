@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,6 +19,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { useGoogleAuth } from '../../hooks/useGoogleAuth';
 
 const { width } = Dimensions.get('window');
 
@@ -36,6 +38,7 @@ export default function LoginScreen() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const router = useRouter();
+  const { signInWithGoogle, loading: googleLoading } = useGoogleAuth();
   const {
     control,
     handleSubmit,
@@ -101,6 +104,17 @@ export default function LoginScreen() {
 
   const handleTogglePasswordVisibility = () => {
     setIsPasswordVisible((prev) => !prev);
+  };
+
+  /** Triggers Google OAuth flow and surfaces any errors in the form UI. */
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      setError('root', {
+        message: err instanceof Error ? err.message : 'Google sign-in failed. Please try again.',
+      });
+    }
   };
 
   const handleSignUpPress = () => {
@@ -252,9 +266,34 @@ export default function LoginScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
+            {/* OR Divider */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Sign In */}
+            <TouchableOpacity
+              style={[styles.googleButton, (loading || googleLoading) && styles.googleButtonDisabled]}
+              onPress={handleGoogleSignIn}
+              disabled={loading || googleLoading}
+              accessibilityLabel="Continue with Google"
+              accessibilityRole="button"
+            >
+              {googleLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color="#FFF" style={styles.googleIcon} />
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
-              <TouchableOpacity onPress={handleSignUpPress} disabled={loading}>
+              <TouchableOpacity onPress={handleSignUpPress} disabled={loading || googleLoading}>
                 <Text style={styles.footerLink}>Sign Up</Text>
               </TouchableOpacity>
             </View>
@@ -432,5 +471,44 @@ const styles = StyleSheet.create({
     color: '#F7931A',
     fontSize: 15,
     fontWeight: 'bold',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#222',
+  },
+  dividerText: {
+    color: '#555',
+    fontSize: 13,
+    fontWeight: '600',
+    marginHorizontal: 12,
+    letterSpacing: 1,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 60,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+    backgroundColor: '#111',
+  },
+  googleButtonDisabled: {
+    opacity: 0.5,
+  },
+  googleIcon: {
+    marginRight: 10,
+  },
+  googleButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

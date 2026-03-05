@@ -18,6 +18,10 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // PKCE is required for the OAuth code-exchange flow used in mobile apps.
+    // Without it, signInWithOAuth returns an implicit token in the URL fragment
+    // which React Native cannot reliably parse.
+    flowType: 'pkce',
   },
 });
 
