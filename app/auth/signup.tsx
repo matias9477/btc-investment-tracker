@@ -106,6 +106,17 @@ export default function SignUpScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
+        {/* Back to Login */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleLoginPress}
+          disabled={loading || googleLoading}
+          accessibilityLabel="Go back to login"
+          accessibilityRole="button"
+        >
+          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        </TouchableOpacity>
+
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -327,6 +338,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 20,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollContent: {
     flexGrow: 1,
