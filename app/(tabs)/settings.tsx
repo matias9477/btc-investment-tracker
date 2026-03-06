@@ -59,6 +59,42 @@ export default function SettingsScreen() {
   }, [settings]);
 
   /**
+   * Clears all balance configuration (both manual value and cell reference).
+   * After clearing, the dashboard falls back to summing purchases.
+   * Prompts for confirmation before executing.
+   */
+  const handleClearBalance = () => {
+    Alert.alert(
+      'Clear Balance Configuration',
+      'This will remove your balance configuration. The dashboard will fall back to metrics based on your purchases only (Yield section will be hidden).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            setSavingBalance(true);
+            try {
+              await updateSettings({
+                manual_btc_balance: null,
+                manual_btc_balance_cell: null,
+                manual_balance_updated_at: null,
+              });
+              setManualBalance('');
+              setCellRef('');
+              setBalanceMode('manual');
+            } catch {
+              Alert.alert('Error', 'Failed to clear balance configuration');
+            } finally {
+              setSavingBalance(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  /**
    * Saves the BTC balance configuration. Behaviour differs by mode:
    * - 'manual': validates and saves the numeric value, clears any cell reference.
    * - 'cell': validates the cell reference format, saves it, clears the numeric value.
@@ -394,6 +430,20 @@ export default function SettingsScreen() {
                 </Text>
               )}
             </TouchableOpacity>
+
+            {/* Only show clear when something is actually configured */}
+            {(settings?.manual_btc_balance !== null && settings?.manual_btc_balance !== undefined ||
+              !!settings?.manual_btc_balance_cell) && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                onPress={handleClearBalance}
+                disabled={savingBalance}
+                accessibilityLabel="Clear balance configuration"
+                accessibilityRole="button"
+              >
+                <Text style={styles.clearButtonText}>Clear Balance Configuration</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* App Info Section */}
@@ -562,6 +612,16 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: -4,
     marginBottom: 4,
+  },
+  clearButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  clearButtonText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '600',
   },
   appInfo: {
     fontSize: 14,
