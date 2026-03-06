@@ -1,6 +1,6 @@
-# 🪙 BTC Investment Tracker
+# BTC Investment Tracker
 
-A modern, feature-rich React Native mobile application built with Expo for tracking your Bitcoin investments. Monitor your portfolio, calculate returns, track interest earnings, and manage your purchases all in one place.
+A React Native mobile app built with Expo for tracking Bitcoin investments. Pulls purchase data directly from a Google Sheets spreadsheet, calculates portfolio metrics in real time, and supports yield tracking for interest-bearing wallets.
 
 ![Bitcoin Tracker](https://img.shields.io/badge/Bitcoin-Tracker-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white)
 ![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
@@ -8,213 +8,243 @@ A modern, feature-rich React Native mobile application built with Expo for track
 ![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
 
-## ✨ Features
+## Features
 
-### 📊 Comprehensive Dashboard
-- **Real-time Bitcoin Price** - Live BTC price from CoinGecko API
-- **Investment Summary** - Track total investment and Bitcoin holdings
-- **Profit/Loss Calculation** - See your gains or losses instantly
-- **ROI Tracking** - Monitor your return on investment percentage
-- **Equilibrium Price** - Know the break-even Bitcoin price
+### Dashboard
+- **Live Bitcoin price** via CoinGecko API with 24h change
+- **Total Invested** — sum of all USD spent across purchases
+- **Current Value & Profit** — with and without yield, side by side for easy comparison
+- **Bitcoin Holdings** — BTC purchased vs BTC in wallet (when a balance is configured)
+- **Yield section** — BTC earned and its USD value (only shown when a wallet balance is configured)
+- **Performance** — ROI (purchases vs wallet) and break-even price
+- **Recent Activity** — last 3 purchases with a "See All" link
+- Pull-to-refresh updates price, purchases, and settings simultaneously
 
-### 📝 Purchase Management
-- **Add Purchases** - Record Bitcoin purchases with date, price, amount, and USD spent
-- **Purchase History** - View all your past purchases in a clean list
-- **Delete Purchases** - Remove incorrect entries easily
-- **Current Price Helper** - Auto-fill BTC price with current market rate
+### Google Sheets Data Source
+- Connect any publicly shared Google Sheet as the purchase data source
+- Configure which columns map to date, BTC price, BTC amount, and USD spent
+- Header rows and non-numeric rows are automatically ignored
+- Sortable purchase table (by date, price, amount, or USD spent — asc/desc)
 
-### ⚙️ Settings & Customization
-- **Interest Tracking** (Optional) - Track earnings from interest-bearing wallets
-- **Manual Balance** - Set your actual wallet balance to account for interest or transfers
-- **Last Updated Timestamp** - Know when you last updated your balance
+### Bitcoin Balance (Yield Tracking)
+- **Enter manually** — type your current wallet balance directly
+- **From sheet cell** — point the app at a cell (e.g. `I7`) and it reads the balance automatically on every sync
+- Clearing the configuration hides the Yield section from the dashboard
 
-### 🔐 Authentication
-- **Email/Password Authentication** - Secure account creation and login
-- **Social Login Support** - Google and Apple OAuth (configurable)
-- **Session Management** - Persistent login with secure token storage
+### Authentication
+- Email/password sign-up and login
+- **Google OAuth** (one tap sign-in on both login and signup screens)
+- Persistent sessions via AsyncStorage
 
-### 🎨 Modern UI/UX
-- **Dark Theme** - Eye-friendly dark mode with Bitcoin orange accents
-- **Smooth Animations** - Polished screen transitions
-- **Responsive Design** - Works on all screen sizes
-- **Pull to Refresh** - Update data with a simple swipe
+### UI
+- Dark theme with Bitcoin-orange accents
+- All cards support double-tap to show an explanation tooltip
+- Responsive layout that works on all screen sizes
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- Node.js (v18 or higher recommended)
-- npm or yarn
-- Expo CLI
+- Node.js 20+ (required by React Native 0.81 and Metro)
+- npm
+- Expo CLI (`npm install -g expo-cli`)
 - Supabase account
-- iOS Simulator (for iOS development) or Android Emulator (for Android development)
+- Xcode (iOS) or Android Studio (Android) for a native dev build
 
-### Installation
+### 1. Clone and install
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd btc-investment-tracker
-   ```
+```bash
+git clone <your-repo-url>
+cd btc-investment-tracker
+npm install
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### 2. Create a Supabase project
 
-3. **Set up Supabase**
-   - Follow the detailed instructions in [SUPABASE_SETUP.md](./SUPABASE_SETUP.md)
-   - Create your Supabase project
-   - Set up database tables and RLS policies
-   - Get your API credentials
+1. Create a new project at [supabase.com](https://supabase.com)
+2. In the SQL Editor, run the following to create the required tables:
 
-4. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` and add your Supabase credentials:
-   ```
-   EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
+```sql
+-- Purchase history
+create table purchases (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  purchase_date date not null,
+  btc_price_at_purchase numeric not null,
+  btc_amount numeric not null,
+  usd_spent numeric not null,
+  created_at timestamptz default now()
+);
 
-5. **Start the development server**
-   ```bash
-   npm start
-   ```
+-- User settings
+create table user_settings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users unique not null,
+  manual_btc_balance numeric,
+  manual_btc_balance_cell text,
+  manual_balance_updated_at timestamptz,
+  sheets_url text,
+  sheets_col_date text default 'A',
+  sheets_col_price text default 'B',
+  sheets_col_amount text default 'C',
+  sheets_col_spent text default 'D',
+  interest_enabled boolean default false,
+  annual_interest_rate numeric,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
 
-6. **Run on your device**
-   - Press `i` for iOS simulator
-   - Press `a` for Android emulator
-   - Scan QR code with Expo Go app for physical device
+-- Row Level Security
+alter table purchases enable row level security;
+alter table user_settings enable row level security;
 
-## 📱 Usage
+create policy "Users can manage their own purchases"
+  on purchases for all using (auth.uid() = user_id);
 
-### First Time Setup
-1. Open the app and create an account
-2. Sign in with your credentials
-3. Add your first Bitcoin purchase
-4. Watch your dashboard populate with metrics
+create policy "Users can manage their own settings"
+  on user_settings for all using (auth.uid() = user_id);
+```
 
-### Adding a Purchase
-1. Tap "Add Purchase" on the dashboard or purchases screen
-2. Select the purchase date
-3. Enter the Bitcoin price (or use "Use Current" button)
-4. Enter the amount of Bitcoin purchased (supports high precision like 0.00645778)
-5. Enter the USD amount spent
-6. Tap "Add Purchase"
+3. In **Authentication → Providers**, enable **Google** and paste your Google OAuth Client ID and Secret.
+4. In **Authentication → URL Configuration → Redirect URLs**, add:
+   - `btc-tracker://auth/callback` (production / native build)
+   - `exp://<your-local-ip>:8081/--/auth/callback` (Expo Go — check the log when you first tap "Continue with Google")
 
-### Tracking Interest (Optional)
-1. Go to Settings
-2. Enable "Interest Tracking"
-3. Set your annual interest rate (e.g., 7%)
-4. Update your manual Bitcoin balance regularly
-5. Dashboard will show interest calculations
+### 3. Configure environment variables
 
-## 🏗️ Tech Stack
+Create a `.env` file in the project root:
 
-- **Framework**: [Expo](https://expo.dev/) (~54.0)
-- **Language**: [TypeScript](https://www.typescriptlang.org/) (~5.9)
-- **Navigation**: [Expo Router](https://docs.expo.dev/router/introduction/) (file-based routing)
-- **Backend**: [Supabase](https://supabase.com/) (PostgreSQL + Auth)
-- **Storage**: AsyncStorage for local session persistence
-- **API**: [CoinGecko](https://www.coingecko.com/en/api) for Bitcoin prices
+```
+EXPO_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+EXPO_PUBLIC_SUPABASE_KEY=your-anon-key
+```
 
-## 📂 Project Structure
+Use the **legacy JWT anon key** (`eyJ...`), not the newer `sb_publishable_` format.
+
+### 4. Run the app
+
+**Expo Go (quickest start, OAuth needs extra Supabase config — see above):**
+```bash
+npx expo start --clear
+```
+
+**Native dev build (recommended for OAuth):**
+```bash
+npx expo run:ios   # or run:android
+```
+
+## Google Sheets Setup
+
+1. Create a spreadsheet with your Bitcoin purchase history.
+2. Set sharing to **"Anyone with the link can view"**.
+3. In the app → **Settings → Google Sheets Data Source**, paste the share URL and set the column letters for each field.
+4. Rows without valid numbers in the price/amount/spent columns (e.g. header rows) are automatically skipped.
+
+**Example sheet layout:**
+
+| A (Date)   | B (BTC Price) | C (BTC Amount) | D (USD Spent) |
+|------------|---------------|----------------|---------------|
+| 28-12-2024 | 95000         | 0.00052631     | 50            |
+
+Columns can be in any order — just configure the mapping in Settings.
+
+### Reading wallet balance from the sheet
+
+If your spreadsheet calculates your total wallet balance (e.g. including Nexo interest) in a cell like `I7`, go to **Settings → Bitcoin Balance → From sheet cell**, enter `I7`, and save. The app will read that cell automatically on every sync instead of requiring a manual entry.
+
+## Project Structure
 
 ```
 btc-investment-tracker/
-├── app/                          # Expo Router app directory
-│   ├── (auth)/                   # Authentication screens
-│   │   ├── login.tsx
-│   │   └── signup.tsx
-│   ├── (tabs)/                   # Main tab navigation
-│   │   ├── index.tsx             # Dashboard
-│   │   ├── purchases.tsx         # Purchase history
-│   │   └── settings.tsx          # Settings
-│   ├── add-purchase.tsx          # Add purchase modal
-│   └── _layout.tsx               # Root layout
-├── components/                   # Reusable components
-│   ├── DashboardCard.tsx
-│   └── PurchaseListItem.tsx
-├── hooks/                        # Custom React hooks
-│   ├── useBitcoinPrice.ts
-│   ├── usePurchases.ts
-│   └── useSettings.ts
-├── lib/                          # Utilities and services
-│   ├── bitcoin-api.ts            # CoinGecko API wrapper
-│   ├── calculations.ts           # Metric calculations
-│   └── supabase.ts               # Supabase client
-├── types/                        # TypeScript type definitions
-│   └── database.ts
-└── README.md
+├── app/
+│   ├── auth/
+│   │   ├── login.tsx          # Email/password + Google login
+│   │   ├── signup.tsx         # Account creation + Google sign-up
+│   │   └── _layout.tsx
+│   ├── (tabs)/
+│   │   ├── index.tsx          # Dashboard
+│   │   ├── purchases.tsx      # Full purchase history with sorting
+│   │   └── settings.tsx       # Sheet config, balance, auth
+│   └── _layout.tsx            # Root layout + auth guard
+├── components/
+│   ├── DashboardCard.tsx      # Metric card (double-tap for tooltip)
+│   ├── PortfolioHero.tsx      # Large value hero at top of dashboard
+│   ├── PriceCard.tsx          # Live BTC price card
+│   ├── PurchaseTable.tsx      # Sortable purchase history table
+│   └── ToastProvider.tsx      # App-wide toast / tooltip context
+├── hooks/
+│   ├── useBitcoinPrice.ts     # CoinGecko price polling
+│   ├── useGoogleAuth.ts       # Supabase + expo-web-browser OAuth flow
+│   ├── usePurchases.ts        # Fetches sheet data, exposes sheetBtcBalance
+│   └── useSettings.ts        # Supabase user_settings CRUD
+├── lib/
+│   ├── calculations.ts        # All dashboard metric calculations
+│   ├── google-sheets.ts       # CSV fetch, row parsing, cell extraction
+│   └── supabase.ts            # Supabase client (PKCE, AsyncStorage)
+├── supabase/
+│   └── migrations/            # SQL migration files
+├── types/
+│   └── database.ts            # TypeScript types for DB + metrics
+└── .env                       # Supabase credentials (not committed)
 ```
 
-## 🗄️ Database Schema
+## Database Schema
 
-### `purchases` Table
-- `id` - Unique purchase identifier
-- `user_id` - Foreign key to auth.users
-- `purchase_date` - Date of purchase
-- `btc_price_at_purchase` - Bitcoin price at time of purchase
-- `btc_amount` - Amount of Bitcoin purchased
-- `usd_spent` - USD amount spent
-- `created_at` - Record creation timestamp
+### `user_settings`
 
-### `user_settings` Table
-- `id` - Unique settings identifier
-- `user_id` - Foreign key to auth.users (unique)
-- `interest_enabled` - Whether interest tracking is enabled
-- `annual_interest_rate` - Annual interest rate percentage
-- `manual_btc_balance` - Manually entered Bitcoin balance
-- `manual_balance_updated_at` - Last update timestamp for manual balance
-- `created_at` - Record creation timestamp
-- `updated_at` - Record update timestamp
+| Column | Type | Description |
+|--------|------|-------------|
+| `sheets_url` | text | Google Sheets share URL |
+| `sheets_col_date` | text | Column letter for date (default: A) |
+| `sheets_col_price` | text | Column letter for BTC price (default: B) |
+| `sheets_col_amount` | text | Column letter for BTC amount (default: C) |
+| `sheets_col_spent` | text | Column letter for USD spent (default: D) |
+| `manual_btc_balance` | numeric | Manually entered wallet balance |
+| `manual_btc_balance_cell` | text | Cell reference to read balance from (e.g. `I7`) |
+| `manual_balance_updated_at` | timestamptz | Last balance update timestamp |
 
-## 🔒 Security
+### `purchases`
 
-- Row Level Security (RLS) enabled on all tables
-- Users can only access their own data
-- Secure authentication with Supabase Auth
-- API keys stored in environment variables
-- No sensitive data in code
+Kept for schema compatibility — data is sourced from Google Sheets, not this table.
 
-## 📊 Calculations
+## Dashboard Metrics
 
-### Metrics Explained
+| Metric | Formula |
+|--------|---------|
+| Total Invested | Sum of all `usd_spent` |
+| Current Value (Purchases) | `totalBoughtBTC × currentPrice` |
+| Current Value (Wallet) | `walletBalance × currentPrice` |
+| Profit | Value − Total Invested |
+| ROI | `(Profit / Total Invested) × 100` |
+| Yield in BTC | `walletBalance − totalBoughtBTC` |
+| Yield in USD | `yieldBTC × currentPrice` |
+| Break-even | `Total Invested / totalBoughtBTC` |
 
-- **Total Investment**: Sum of all USD spent on purchases
-- **Total Bought Bitcoin**: Sum of all BTC amounts purchased
-- **Real Total Bitcoin**: Manually entered actual wallet balance
-- **Interest in BTC**: Real Total - Total Bought
-- **Interest in USD**: Interest in BTC × Current BTC Price
-- **Final Value**: Total BTC × Current Price
-- **Profit/Loss**: Final Value - Total Investment
-- **ROI**: (Profit / Total Investment) × 100
-- **Equilibrium Price**: Total Investment / Total BTC
+When no wallet balance is configured, all wallet/yield metrics are hidden and the dashboard shows metrics based on purchases only.
 
-## 🤝 Contributing
+## Tech Stack
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+| Layer | Technology |
+|-------|-----------|
+| Framework | Expo ~54 / React Native 0.81 |
+| Language | TypeScript ~5.9 |
+| Navigation | Expo Router (file-based) |
+| Backend / Auth | Supabase (PostgreSQL + Auth) |
+| OAuth | expo-auth-session + expo-web-browser |
+| Data source | Google Sheets (CSV export via gviz endpoint) |
+| CSV parsing | papaparse |
+| Price API | CoinGecko (free tier) |
+| Session storage | AsyncStorage |
 
-## 📄 License
+## Security
 
-This project is open source and available under the MIT License.
+- Row Level Security (RLS) enabled on all tables — users can only read their own data
+- OAuth uses PKCE flow
+- API keys loaded from environment variables, never committed
+- Google Sheets integration requires only read-only public sharing
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [CoinGecko](https://www.coingecko.com/) for the free Bitcoin price API
-- [Supabase](https://supabase.com/) for the amazing backend platform
-- [Expo](https://expo.dev/) for the excellent React Native framework
-
-## 📞 Support
-
-If you have any questions or need help setting up the app, please:
-1. Check the [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) guide
-2. Review the troubleshooting section
-3. Open an issue on GitHub
-
----
-
-Made with ❤️ for Bitcoin investors
+- [Supabase](https://supabase.com/) for authentication and settings storage
+- [Expo](https://expo.dev/) for the React Native framework
